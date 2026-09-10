@@ -29,7 +29,45 @@ async def refresh_display(bot, data):
         except:
             continue
 
-    updated = False  # ← save_all 最適化用フラグ
+    # save_all flag
+    updated = False
+
+    # -----------------------------
+    # 整合性チェック（ID方式の安全装置）
+    # -----------------------------
+    for period in groups.keys():  # schedules に存在する period のみチェック
+        msg_id = message_ids.get(period)
+
+        if msg_id:
+            try:
+                msg = await channel.fetch_message(msg_id)
+
+                # period と内容が一致しているか確認
+                if not msg.content.startswith(f"**{period}の予定一覧**"):
+                    # 内容ズレ → 自動修正（新規作成）
+                    new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
+                    message_ids[period] = new_msg.id
+                    updated = True
+
+            except discord.NotFound:
+                # メッセージが消えている → 自動修正（新規作成）
+                new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
+                message_ids[period] = new_msg.id
+                updated = True
+
+        else:
+            # message_ids に period が存在しない → 自動修正（新規作成）
+            new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
+            message_ids[period] = new_msg.id
+            updated = True
+
+    # -----------------------------
+    # 不要な period の message_id を自動削除
+    # -----------------------------
+    for period in list(message_ids.keys()):
+        if period not in groups:  # schedules に存在しない period は不要
+            del message_ids[period]
+            updated = True
 
     # -----------------------------
     # ID方式：履歴を読まず、message_ids を使う
