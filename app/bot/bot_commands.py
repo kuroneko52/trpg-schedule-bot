@@ -24,6 +24,18 @@ class MyBot(commands.Bot):
 bot = MyBot(command_prefix='!', intents=intents)
 
 # -----------------------------
+# 日付ヴァリデーション関数
+# -----------------------------
+def validate_date(date_str: str):
+    try:
+        m, d = map(int, date_str.split("/"))
+        if not (1 <= m <= 12 and 1 <= d <= 31):
+            return False
+        return True
+    except:
+        return False
+
+# -----------------------------
 # Bot 起動時処理
 # -----------------------------
 @bot.event
@@ -39,6 +51,11 @@ async def on_ready():
 @bot.command()
 async def add(ctx, date_str: str, *, event_info: str):
     async with data_lock:
+        # 日付ヴァリデーション
+        if not validate_date(date_str):
+            await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
+            return
+
         # Json読み込み
         data = await asyncio.to_thread(load_data)
 
@@ -62,6 +79,11 @@ async def add(ctx, date_str: str, *, event_info: str):
 @bot.command(name="del")
 async def del_command(ctx, date_str: str, num: int):
     async with data_lock:
+        # 日付ヴァリデーション
+        if not validate_date(date_str):
+            await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
+            return
+
         # Json読み込み
         data = await asyncio.to_thread(load_data)
 
@@ -84,4 +106,6 @@ async def del_command(ctx, date_str: str, num: int):
 
             except:
                 await ctx.send("⚠️ 番号が正しくありません")
+        else:
+            await ctx.send("⚠️ 指定された日付の予定がありません")
 
