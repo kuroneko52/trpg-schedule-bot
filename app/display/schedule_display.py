@@ -3,8 +3,9 @@ import os
 import asyncio
 import discord
 
-# データ保存（ID方式のため追加）
+# データ保存
 from data.schedule_store import save_all
+
 
 # -----------------------------
 # Discord 表示更新
@@ -20,7 +21,9 @@ async def refresh_display(bot, data):
 
     groups = {}
 
+    # -----------------------------
     # 月前半・後半の分類
+    # -----------------------------
     for date_key in schedules.keys():
         try:
             m, d = map(int, date_key.split('/'))
@@ -29,7 +32,6 @@ async def refresh_display(bot, data):
         except:
             continue
 
-    # save_all flag
     updated = False
 
     # -----------------------------
@@ -42,27 +44,23 @@ async def refresh_display(bot, data):
             try:
                 msg = await channel.fetch_message(msg_id)
 
-                # periodと内容一致しているかチェック
                 if not msg.content.startswith(f"**{period}の予定一覧**"):
-                    # 内容がズレていたら自動修正
                     new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
                     message_ids[period] = new_msg.id
                     updated = True
 
             except discord.NotFound:
-                # メッセージが消えていたら自動修正
                 new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
                 message_ids[period] = new_msg.id
                 updated = True
 
         else:
-            # message_idsにperiodが存在しなければ自動修正
             new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
             message_ids[period] = new_msg.id
             updated = True
 
     # -----------------------------
-    # 不要な period の message_id を自動削除
+    # 不要な period の message_id を削除
     # -----------------------------
     for period in list(message_ids.keys()):
         if period not in groups:
@@ -70,41 +68,85 @@ async def refresh_display(bot, data):
             updated = True
 
     # -----------------------------
-    # ID方式：履歴を読まず、message_ids を使う
+    # 並び順ソートキー（前半→後半）
     # -----------------------------
     def sort_period_key(period: str):
         m = int(period.replace("月前半", "").replace("月後半", ""))
         half = 0 if "前半" in period else 1
         return (m, half)
 
-    for period, dates in sorted(groups.items(), key=lambda x: sort_period_key(x[0])):
+    periods_sorted = sorted(groups.keys(), key=sort_period_key)
 
+    # -----------------------------
+    # Discord 上の既存メッセージを取得
+    # -----------------------------
+    messages = []
+    async for m in channel.history(limit=50):
+        messages.append(m)
+
+    existing = {}
+    for m in messages:
+        for period, mid in message_ids.items():
+            if m.id == mid:
+                existing[period] = m
+
+    # -----------------------------
+    # ズレ判定（created_at は使わない）
+    # message_ids のキー順を「実際の順番」として扱う
+    # -----------------------------
+    actual_order = list(message_ids.keys())
+
+    # -----------------------------
+    # 並び順修正（ズレてるものだけ再投稿）
+    # -----------------------------
+    new_message_ids = {}
+
+    for correct_index, period in enumerate(periods_sorted):
+
+        # メッセージ本文生成
         text = f"**{period}の予定一覧**\n"
-        for d in sorted(dates, key=lambda x: int(x.split('/')[1])):
+        for d in sorted(groups[period], key=lambda x: int(x.split('/')[1])):
             text += f"**【{d}】**\n"
             for i, e in enumerate(schedules[d], 1):
                 text += f" {i}. {e}\n"
 
-        msg_id = message_ids.get(period)
+        msg_obj = existing.get(period)
 
-        if msg_id:
-            # 既存メッセージを取得して更新
-            try:
-                target_msg = await channel.fetch_message(msg_id)
-                if target_msg.content != text:
-                    await target_msg.edit(content=text)
-            except discord.NotFound:
-                # メッセージが消えていたら新規作成
-                new_msg = await channel.send(text)
-                message_ids[period] = new_msg.id
-                updated = True
-        else:
-            # 初回作成
+        # 正しい順番
+        correct_index = periods_sorted.index(period)
+
+        # 実際の順番（辞書順）
+        actual_index = actual_order.index(period)
+
+        if actual_index != correct_index:
+            # ズレてる → 再投稿
+            if msg_obj:
+                try:
+                    await msg_obj.delete()
+                except discord.NotFound:
+                    pass
+
             new_msg = await channel.send(text)
-            message_ids[period] = new_msg.id
+            new_message_ids[period] = new_msg.id
             updated = True
 
-        await asyncio.sleep(1)
+        else:
+            # 正しい → 編集だけ
+            if msg_obj:
+                if msg_obj.content != text:
+                    await msg_obj.edit(content=text)
+                    updated = True
+                new_message_ids[period] = msg_obj.id
+            else:
+                # 存在しない場合は新規作成
+                new_msg = await channel.send(text)
+                new_message_ids[period] = new_msg.id
+                updated = True
+
+    # -----------------------------
+    # message_ids を正しい順番で再構築
+    # -----------------------------
+    data["message_ids"] = new_message_ids
 
     # -----------------------------
     # save_all はここで 1 回だけ
@@ -113,4 +155,3 @@ async def refresh_display(bot, data):
         await save_all(bot, data)
 
     return True
-
