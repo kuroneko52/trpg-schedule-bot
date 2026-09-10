@@ -1,11 +1,15 @@
 # app/display/schedule_display.py
+# 司令塔
+
 import os
-import asyncio
 import discord
 
-# データ保存
 from data.schedule_store import save_all
 
+from display.period_utils import classify_period, sort_period_key
+from display.message_builder import build_message
+from display.discord_utils import fetch_existing_messages
+from display.order_utils import is_mismatched
 
 # -----------------------------
 # Discord 表示更新
@@ -19,15 +23,13 @@ async def refresh_display(bot, data):
     schedules = data.get("schedules", {})
     message_ids = data.get("message_ids", {})
 
+    # -----------------------------
+    # period 分類
+    # -----------------------------
     groups = {}
-
-    # -----------------------------
-    # 月前半・後半の分類
-    # -----------------------------
     for date_key in schedules.keys():
         try:
-            m, d = map(int, date_key.split('/'))
-            period = f"{m}月{'前半' if d <= 15 else '後半'}"
+            period = classify_period(date_key)
             groups.setdefault(period, []).append(date_key)
         except:
             continue
@@ -35,7 +37,7 @@ async def refresh_display(bot, data):
     updated = False
 
     # -----------------------------
-    # 整合性チェック（ID方式の安全装置）
+    # 整合性チェック（ID壊れてる？）
     # -----------------------------
     for period in groups.keys():
         msg_id = message_ids.get(period)
@@ -60,7 +62,7 @@ async def refresh_display(bot, data):
             updated = True
 
     # -----------------------------
-    # 不要な period の message_id を削除
+    # 不要な period の削除
     # -----------------------------
     for period in list(message_ids.keys()):
         if period not in groups:
@@ -68,57 +70,31 @@ async def refresh_display(bot, data):
             updated = True
 
     # -----------------------------
-    # 並び順ソートキー（前半→後半）
+    # period ソート順
     # -----------------------------
-    def sort_period_key(period: str):
-        m = int(period.replace("月前半", "").replace("月後半", ""))
-        half = 0 if "前半" in period else 1
-        return (m, half)
-
     periods_sorted = sorted(groups.keys(), key=sort_period_key)
 
     # -----------------------------
-    # Discord 上の既存メッセージを取得
+    # Discord 上の既存メッセージ取得
     # -----------------------------
-    messages = []
-    async for m in channel.history(limit=50):
-        messages.append(m)
-
-    existing = {}
-    for m in messages:
-        for period, mid in message_ids.items():
-            if m.id == mid:
-                existing[period] = m
+    existing = await fetch_existing_messages(channel, message_ids)
 
     # -----------------------------
-    # ズレ判定（created_at は使わない）
-    # message_ids のキー順を「実際の順番」として扱う
+    # ズレ判定用の辞書順
     # -----------------------------
     actual_order = list(message_ids.keys())
 
     # -----------------------------
-    # 並び順修正（ズレてるものだけ再投稿）
+    # 再投稿 or 編集
     # -----------------------------
     new_message_ids = {}
 
-    for correct_index, period in enumerate(periods_sorted):
-
-        # メッセージ本文生成
-        text = f"**{period}の予定一覧**\n"
-        for d in sorted(groups[period], key=lambda x: int(x.split('/')[1])):
-            text += f"**【{d}】**\n"
-            for i, e in enumerate(schedules[d], 1):
-                text += f" {i}. {e}\n"
+    for period in periods_sorted:
 
         msg_obj = existing.get(period)
+        text = build_message(period, groups, schedules)
 
-        # 正しい順番
-        correct_index = periods_sorted.index(period)
-
-        # 実際の順番（辞書順）
-        actual_index = actual_order.index(period)
-
-        if actual_index != correct_index:
+        if is_mismatched(period, actual_order, periods_sorted):
             # ズレてる → 再投稿
             if msg_obj:
                 try:
@@ -138,7 +114,6 @@ async def refresh_display(bot, data):
                     updated = True
                 new_message_ids[period] = msg_obj.id
             else:
-                # 存在しない場合は新規作成
                 new_msg = await channel.send(text)
                 new_message_ids[period] = new_msg.id
                 updated = True
@@ -148,10 +123,8 @@ async def refresh_display(bot, data):
     # -----------------------------
     data["message_ids"] = new_message_ids
 
-    # -----------------------------
-    # save_all はここで 1 回だけ
-    # -----------------------------
     if updated:
         await save_all(bot, data)
 
     return True
+
