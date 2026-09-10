@@ -2,31 +2,45 @@
 import json
 import os
 import asyncio
-import tempfile
 from datetime import datetime
-
-FILE_PATH = os.environ.get("FILE_PATH")
+import discord
 
 # ============================================================
-# JSON 読み書き
+# 環境変数
 # ============================================================
 
-def load_data():
-    """schedule.json を読み込む（壊れていたら復旧）"""
-    if not os.path.exists(FILE_PATH):
-        return {"schedules": {}, "message_ids": {}}
+JSON_STORAGE_ID = int(os.environ.get("JSON_STORAGE_ID"))
+JSON_STORAGE_CHANNEL_ID = int(os.environ.get("JSON_STORAGE_CHANNEL_ID"))
 
+# ============================================================
+# Discord メッセージから JSON を読み込む
+# ============================================================
+
+async def load_data_from_discord(bot):
+    """Discord の保存メッセージから JSON を読み込む"""
     try:
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        channel = bot.get_channel(JSON_STORAGE_CHANNEL_ID)
+        msg = await channel.fetch_message(JSON_STORAGE_ID)
 
+        raw = msg.content.strip()
+
+        # JSON デコード安全化
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            print("[Discord] JSON が壊れているため初期化します")
+            return {"schedules": {}, "message_ids": {}}
+
+        # 安全性のための最低限の補完
+        if "schedules" not in data:
+            data["schedules"] = {}
         if "message_ids" not in data:
             data["message_ids"] = {}
 
         return data
 
     except Exception as e:
-        print(f"[Local] JSON 読み込み失敗 → 初期化: {e}")
+        print(f"[Discord] JSON 読み込み失敗 → 初期化: {e}")
         return {"schedules": {}, "message_ids": {}}
 
 
@@ -35,7 +49,6 @@ def load_data():
 # ============================================================
 
 def cleanup_old_data(data):
-    """昨日以前の schedule を削除する"""
     today = datetime.now().date()
     new_schedules = {}
 
@@ -52,24 +65,27 @@ def cleanup_old_data(data):
 
 
 # ============================================================
-# 原子的保存
+# Discord メッセージに JSON を保存（上書き）
 # ============================================================
 
-def save_data_atomic(data):
-    """schedule.json を原子的に安全保存する"""
-    dir_name = os.path.dirname(FILE_PATH) or "."
-    with tempfile.NamedTemporaryFile("w", delete=False, dir=dir_name, encoding="utf-8") as tmp:
-        json.dump(data, tmp, ensure_ascii=False, indent=2)
-        temp_name = tmp.name
+async def save_data_to_discord(bot, data):
+    """Discord の保存メッセージを edit して永続化"""
+    try:
+        channel = bot.get_channel(JSON_STORAGE_CHANNEL_ID)
+        msg = await channel.fetch_message(JSON_STORAGE_ID)
 
-    os.replace(temp_name, FILE_PATH)
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+        await msg.edit(content=text)
+
+    except Exception as e:
+        print(f"[Discord] JSON 保存失敗: {e}")
 
 
 # ============================================================
 # 保存処理の共通化
 # ============================================================
 
-async def save_all(data):
+async def save_all(bot, data):
     cleanup_old_data(data)
-    await asyncio.to_thread(save_data_atomic, data)
+    await save_data_to_discord(bot, data)
 
