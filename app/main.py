@@ -9,13 +9,14 @@ import time
 from datetime import datetime
 from flask import Flask
 from threading import Thread
+from dotenv import load_dotenv
+load_dotenv()
 
-
-TOKEN = os.environ.get('DISCORD_TOKEN')
-CHANNEL_ID = 1158360743578701854
-FILE_PATH = 'schedule.json'
+TOKEN = os.environ.get("DISCORD_TOKEN")
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
-REPO_NAME = 'sibu810/ie-'
+REPO_NAME = os.environ.get("REPO_NAME")
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID"))
+FILE_PATH = os.environ.get("FILE_PATH")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -57,10 +58,10 @@ async def push_data(data):
         url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
         headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
         payload = {
-            "message": "Update schedule",
-            "content": base64.b64encode(json.dumps(data, ensure_ascii=False, indent=4).encode('utf-8')).decode('utf-8'),
-            "sha": sha
-        }
+                "message": "Update schedule",
+                "content": base64.b64encode(json.dumps(data, ensure_ascii=False, indent=4).encode('utf-8')).decode('utf-8'),
+                "sha": sha
+                }
         async with session.put(url, headers=headers, json=payload) as res:
             return res.status in (200, 201)
 
@@ -75,7 +76,7 @@ def load_data():
 async def sync_and_refresh_display(data, save_to_github=False):
     channel = bot.get_channel(CHANNEL_ID)
     if not channel: return False
-    
+
     schedules = data.get("schedules", {})
     groups = {}
     for date_key in schedules.keys():
@@ -86,22 +87,22 @@ async def sync_and_refresh_display(data, save_to_github=False):
             groups[period].append(date_key)
         except: continue
 
-   
+
     bot_messages = []
     async for msg in channel.history(limit=50):
         if msg.author == bot.user:
             bot_messages.append(msg)
 
-    
+
     for period, dates in sorted(groups.items()):
         text = f"**{period}の予定一覧**\n"
         for d in sorted(dates, key=lambda x: int(x.split('/')[1])):
             text += f"**【{d}】**\n"
             for i, e in enumerate(schedules[d], 1):
                 text += f" {i}. {e}\n"
-        
+
         target_msg = next((m for m in bot_messages if f"**{period}の予定一覧**" in m.content), None)
-        
+
         if target_msg:
             if target_msg.content != text:
                 await target_msg.edit(content=text)
@@ -110,13 +111,13 @@ async def sync_and_refresh_display(data, save_to_github=False):
             await channel.send(text)
         await asyncio.sleep(1)
 
-    
+
     for msg in bot_messages:
         await msg.delete()
 
     with open(FILE_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-        
+
     return await push_data(data) if save_to_github else True
 
 @bot.event
@@ -124,7 +125,7 @@ async def on_ready():
     print(f'Bot Ready: {bot.user}')
     await download_data()
     data = await asyncio.to_thread(load_data)
-    
+
     await sync_and_refresh_display(data, save_to_github=False)
 
 @bot.command()
@@ -133,7 +134,7 @@ async def add(ctx, date_str: str, *, event_info: str):
         data = await asyncio.to_thread(load_data)
         if date_str not in data["schedules"]: data["schedules"][date_str] = []
         data["schedules"][date_str].append(event_info.strip())
-        
+
         success = await sync_and_refresh_display(data, save_to_github=True)
         await ctx.message.add_reaction('✅' if success else '⚠️')
 
@@ -152,4 +153,5 @@ async def del_command(ctx, date_str: str, num: int):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    while True:
+    bot.run(TOKEN)
+
