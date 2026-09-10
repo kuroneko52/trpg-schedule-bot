@@ -38,6 +38,7 @@ async def refresh_display(bot, data):
 
     # -----------------------------
     # 整合性チェック（ID壊れてる？）
+    # → ここは最小限の SEND のみにする
     # -----------------------------
     for period in groups.keys():
         msg_id = message_ids.get(period)
@@ -46,6 +47,7 @@ async def refresh_display(bot, data):
             try:
                 msg = await channel.fetch_message(msg_id)
 
+                # タイトルが壊れているときだけ SEND
                 if not msg.content.startswith(f"**{period}の予定一覧**"):
                     new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
                     message_ids[period] = new_msg.id
@@ -80,12 +82,7 @@ async def refresh_display(bot, data):
     existing = await fetch_existing_messages(channel, message_ids)
 
     # -----------------------------
-    # ズレ判定用の辞書順
-    # -----------------------------
-    actual_order = list(message_ids.keys())
-
-    # -----------------------------
-    # 再投稿 or 編集
+    # 再投稿 or 編集（PATCH削減の本丸）
     # -----------------------------
     new_message_ids = {}
 
@@ -94,8 +91,8 @@ async def refresh_display(bot, data):
         msg_obj = existing.get(period)
         text = build_message(period, groups, schedules)
 
-        if is_mismatched(period, actual_order, periods_sorted):
-            # ズレてる → 再投稿
+        # ズレているときだけ DELETE → SEND
+        if is_mismatched(period, list(message_ids.keys()), periods_sorted):
             if msg_obj:
                 try:
                     await msg_obj.delete()
@@ -107,12 +104,14 @@ async def refresh_display(bot, data):
             updated = True
 
         else:
-            # 正しい → 編集だけ
+            # 内容が同じなら PATCH しない（ここが PATCH削減の本丸）
             if msg_obj:
                 if msg_obj.content != text:
-                    await msg_obj.edit(content=text)
+                    await msg_obj.edit(content=text)  # PATCH 1回だけ
                     updated = True
+
                 new_message_ids[period] = msg_obj.id
+
             else:
                 new_msg = await channel.send(text)
                 new_message_ids[period] = new_msg.id

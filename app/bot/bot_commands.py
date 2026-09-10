@@ -71,8 +71,8 @@ async def add(ctx, date_str: str, *, event_info: str):
         await save_all(bot, data)
 
         # Discord表示を更新してリアクションを追加
-        success = await refresh_display(bot, data)
-        await ctx.message.add_reaction('✅' if success else '⚠️')
+        await schedule_refresh(bot, data)
+        await ctx.message.add_reaction('✅')
 
 # -----------------------------
 # 予定削除コマンド
@@ -102,8 +102,8 @@ async def del_command(ctx, date_str: str, num: int):
                 await save_all(bot, data)
 
                 # Discord表示を更新してリアクションを追加
-                success = await refresh_display(bot, data)
-                await ctx.message.add_reaction('🗑️' if success else '⚠️')
+                await schedule_refresh(bot, data)
+                await ctx.message.add_reaction('🗑️')
 
             except:
                 await ctx.send("⚠️ 番号が正しくありません")
@@ -111,7 +111,7 @@ async def del_command(ctx, date_str: str, num: int):
             await ctx.send("⚠️ 指定された日付の予定がありません")
 
 # -----------------------------
-# 予定削除コマンド
+# Json初期化コマンド
 # -----------------------------
 @bot.command()
 async def initjson(ctx):
@@ -143,4 +143,43 @@ async def initjson(ctx):
     await save_all(bot, data)
 
     await ctx.send(f"✅ 初期化完了！ 新しい JSON_STORAGE_ID は `{new_msg.id}` だよ")
+
+# -----------------------------
+# refresh_display をキュー方式でまとめて1回にする
+# -----------------------------
+refresh_queue = asyncio.Queue()
+refresh_worker_task = None
+
+async def schedule_refresh(bot, data):
+    # 最新の data をキューに入れる（古いものは無視される）
+    if refresh_queue.empty():
+        await refresh_queue.put((bot, data))
+    else:
+        # すでにキューにあるなら上書き（最新だけ保持）
+        try:
+            refresh_queue.get_nowait()
+        except:
+            pass
+        await refresh_queue.put((bot, data))
+
+    # ワーカーが動いていなければ起動
+    global refresh_worker_task
+    if refresh_worker_task is None or refresh_worker_task.done():
+        refresh_worker_task = asyncio.create_task(refresh_worker())
+
+
+async def refresh_worker():
+    while not refresh_queue.empty():
+        bot, data = await refresh_queue.get()
+
+        # 1秒待って連続呼び出しをまとめる
+        await asyncio.sleep(1)
+
+        # 最新の data だけを使う
+        while not refresh_queue.empty():
+            bot, data = await refresh_queue.get()
+
+        # 実際の描画
+        await refresh_display(bot, data)
+
 
