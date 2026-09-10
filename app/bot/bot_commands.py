@@ -1,10 +1,11 @@
 # app/bot/bot_commands.py
 import asyncio
 import discord
+import os
 from discord.ext import commands
 
 # データ層
-from data.schedule_store import load_data, save_all
+from data.schedule_store import load_data_from_discord, save_all
 
 # 表示層
 from display.schedule_display import refresh_display
@@ -41,9 +42,9 @@ def validate_date(date_str: str):
 @bot.event
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
-    data = await asyncio.to_thread(load_data)
+    data = await load_data_from_discord(bot)
     await refresh_display(bot, data)
-    await save_all(data)  # 初期表示も保存
+    await save_all(bot, data)  # 初期表示も保存
 
 # -----------------------------
 # 予定追加コマンド
@@ -57,7 +58,7 @@ async def add(ctx, date_str: str, *, event_info: str):
             return
 
         # Json読み込み
-        data = await asyncio.to_thread(load_data)
+        data = await load_data_from_discord(bot)
 
         # 日付がなければJson作成
         if date_str not in data["schedules"]:
@@ -67,7 +68,7 @@ async def add(ctx, date_str: str, *, event_info: str):
         data["schedules"][date_str].append(event_info.strip())
 
         # 共通保存処理
-        await save_all(data)
+        await save_all(bot, data)
 
         # Discord表示を更新してリアクションを追加
         success = await refresh_display(bot, data)
@@ -85,7 +86,7 @@ async def del_command(ctx, date_str: str, num: int):
             return
 
         # Json読み込み
-        data = await asyncio.to_thread(load_data)
+        data = await load_data_from_discord(bot)
 
         # 削除処理
         if date_str in data["schedules"]:
@@ -98,7 +99,7 @@ async def del_command(ctx, date_str: str, num: int):
                     del data["schedules"][date_str]
 
                 # 共通保存処理
-                await save_all(data)
+                await save_all(bot, data)
 
                 # Discord表示を更新してリアクションを追加
                 success = await refresh_display(bot, data)
@@ -108,4 +109,38 @@ async def del_command(ctx, date_str: str, num: int):
                 await ctx.send("⚠️ 番号が正しくありません")
         else:
             await ctx.send("⚠️ 指定された日付の予定がありません")
+
+# -----------------------------
+# 予定削除コマンド
+# -----------------------------
+@bot.command()
+async def initjson(ctx):
+    """schedule-json の初期化（保存メッセージを bot が作成）"""
+    channel_id = int(os.environ.get("JSON_STORAGE_CHANNEL_ID"))
+    channel = bot.get_channel(channel_id)
+
+    if not channel:
+        await ctx.send("⚠️ JSON_STORAGE_CHANNEL_ID が不正です")
+        return
+
+    # 新しい保存メッセージを bot が送る
+    new_msg = await channel.send('{"schedules": {}, "message_ids": {}}')
+
+    # 新しいメッセージIDを .env に書き込むのはできないので
+    # data に保存しておいて、save_all で永続化する
+    data = {
+            "schedules": {},
+            "message_ids": {}
+            }
+
+    # 保存メッセージの ID をセット
+    data["storage_message_id"] = new_msg.id
+
+    # JSON_STORAGE_ID を使う構造なので、ここで上書き
+    os.environ["JSON_STORAGE_ID"] = str(new_msg.id)
+
+    # Discord に保存
+    await save_all(bot, data)
+
+    await ctx.send(f"✅ 初期化完了！ 新しい JSON_STORAGE_ID は `{new_msg.id}` だよ")
 

@@ -35,28 +35,28 @@ async def refresh_display(bot, data):
     # -----------------------------
     # 整合性チェック（ID方式の安全装置）
     # -----------------------------
-    for period in groups.keys():  # schedules に存在する period のみチェック
+    for period in groups.keys():
         msg_id = message_ids.get(period)
 
         if msg_id:
             try:
                 msg = await channel.fetch_message(msg_id)
 
-                # period と内容が一致しているか確認
+                # periodと内容一致しているかチェック
                 if not msg.content.startswith(f"**{period}の予定一覧**"):
-                    # 内容ズレ → 自動修正（新規作成）
+                    # 内容がズレていたら自動修正
                     new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
                     message_ids[period] = new_msg.id
                     updated = True
 
             except discord.NotFound:
-                # メッセージが消えている → 自動修正（新規作成）
+                # メッセージが消えていたら自動修正
                 new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
                 message_ids[period] = new_msg.id
                 updated = True
 
         else:
-            # message_ids に period が存在しない → 自動修正（新規作成）
+            # message_idsにperiodが存在しなければ自動修正
             new_msg = await channel.send(f"**{period}の予定一覧**\n（自動修正）")
             message_ids[period] = new_msg.id
             updated = True
@@ -65,14 +65,20 @@ async def refresh_display(bot, data):
     # 不要な period の message_id を自動削除
     # -----------------------------
     for period in list(message_ids.keys()):
-        if period not in groups:  # schedules に存在しない period は不要
+        if period not in groups:
             del message_ids[period]
             updated = True
 
     # -----------------------------
     # ID方式：履歴を読まず、message_ids を使う
     # -----------------------------
-    for period, dates in sorted(groups.items()):
+    def sort_period_key(period: str):
+        m = int(period.replace("月前半", "").replace("月後半", ""))
+        half = 0 if "前半" in period else 1
+        return (m, half)
+
+    for period, dates in sorted(groups.items(), key=lambda x: sort_period_key(x[0])):
+
         text = f"**{period}の予定一覧**\n"
         for d in sorted(dates, key=lambda x: int(x.split('/')[1])):
             text += f"**【{d}】**\n"
@@ -88,7 +94,7 @@ async def refresh_display(bot, data):
                 if target_msg.content != text:
                     await target_msg.edit(content=text)
             except discord.NotFound:
-                # メッセージが消えていた場合は新規作成
+                # メッセージが消えていたら新規作成
                 new_msg = await channel.send(text)
                 message_ids[period] = new_msg.id
                 updated = True
@@ -104,7 +110,7 @@ async def refresh_display(bot, data):
     # save_all はここで 1 回だけ
     # -----------------------------
     if updated:
-        await save_all(data)
+        await save_all(bot, data)
 
     return True
 
