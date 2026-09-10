@@ -3,6 +3,9 @@ import os
 import asyncio
 import discord
 
+# データ保存（ID方式のため追加）
+from data.schedule_store import save_all
+
 # -----------------------------
 # Discord 表示更新
 # -----------------------------
@@ -13,6 +16,8 @@ async def refresh_display(bot, data):
         return False
 
     schedules = data.get("schedules", {})
+    message_ids = data.get("message_ids", {})
+
     groups = {}
 
     # 月前半・後半の分類
@@ -24,13 +29,9 @@ async def refresh_display(bot, data):
         except:
             continue
 
-    # Bot の過去メッセージ取得
-    bot_messages = []
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user:
-            bot_messages.append(msg)
-
-    # 各期間のメッセージ更新
+    # -----------------------------
+    # ID方式：履歴を読まず、message_ids を使う
+    # -----------------------------
     for period, dates in sorted(groups.items()):
         text = f"**{period}の予定一覧**\n"
         for d in sorted(dates, key=lambda x: int(x.split('/')[1])):
@@ -38,20 +39,26 @@ async def refresh_display(bot, data):
             for i, e in enumerate(schedules[d], 1):
                 text += f" {i}. {e}\n"
 
-        target_msg = next((m for m in bot_messages if f"**{period}の予定一覧**" in m.content), None)
+        msg_id = message_ids.get(period)
 
-        if target_msg:
-            if target_msg.content != text:
-                await target_msg.edit(content=text)
-            bot_messages.remove(target_msg)
+        if msg_id:
+            # 既存メッセージを取得して更新
+            try:
+                target_msg = await channel.fetch_message(msg_id)
+                if target_msg.content != text:
+                    await target_msg.edit(content=text)
+            except discord.NotFound:
+                # メッセージが消えていた場合は新規作成
+                new_msg = await channel.send(text)
+                message_ids[period] = new_msg.id
+                await save_all(data)
         else:
-            await channel.send(text)
+            # 初回作成
+            new_msg = await channel.send(text)
+            message_ids[period] = new_msg.id
+            await save_all(data)
 
         await asyncio.sleep(1)
-
-    # 不要メッセージ削除
-    for msg in bot_messages:
-        await msg.delete()
 
     return True
 

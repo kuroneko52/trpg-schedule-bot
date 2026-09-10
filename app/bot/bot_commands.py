@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 
 # データ層
-from data.schedule_store import load_data, queue_save, github_worker
+from data.schedule_store import load_data, save_all
 
 # 表示層
 from display.schedule_display import refresh_display
@@ -17,17 +17,10 @@ data_lock = asyncio.Lock()
 intents = discord.Intents.default()
 intents.message_content = True
 
-# -----------------------------
-# discord.py v2 正式対応 Bot クラス
-# -----------------------------
 class MyBot(commands.Bot):
-    # Bot 初期化時に呼ばれる（v2 の正しい worker 起動場所）
     async def setup_hook(self):
-        # GitHub 保存 worker をバックグラウンドで起動
-        self.loop.create_task(github_worker())
-        print("GitHub worker started.")
+        print("Bot setup completed.")
 
-# Bot インスタンス生成
 bot = MyBot(command_prefix='!', intents=intents)
 
 # -----------------------------
@@ -36,10 +29,9 @@ bot = MyBot(command_prefix='!', intents=intents)
 @bot.event
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
-    # ローカル JSON 読み込み
     data = await asyncio.to_thread(load_data)
-    # Discord 表示更新
     await refresh_display(bot, data)
+    await save_all(data)  # 初期表示も保存
 
 # -----------------------------
 # 予定追加コマンド
@@ -47,23 +39,21 @@ async def on_ready():
 @bot.command()
 async def add(ctx, date_str: str, *, event_info: str):
     async with data_lock:
-        # ローカル JSON 読み込み
+        # Json読み込み
         data = await asyncio.to_thread(load_data)
 
-        # 日付がなければ作成
+        # 日付がなければJson作成
         if date_str not in data["schedules"]:
             data["schedules"][date_str] = []
 
         # 予定追加
         data["schedules"][date_str].append(event_info.strip())
 
-        # GitHub 保存要求（キュー化）
-        await queue_save()
+        # 共通保存処理
+        await save_all(data)
 
-        # Discord 表示更新
+        # Discord表示を更新してリアクションを追加
         success = await refresh_display(bot, data)
-
-        # 成功リアクション
         await ctx.message.add_reaction('✅' if success else '⚠️')
 
 # -----------------------------
@@ -72,25 +62,24 @@ async def add(ctx, date_str: str, *, event_info: str):
 @bot.command(name="del")
 async def del_command(ctx, date_str: str, num: int):
     async with data_lock:
-        # ローカル JSON 読み込み
+        # Json読み込み
         data = await asyncio.to_thread(load_data)
 
+        # 削除処理
         if date_str in data["schedules"]:
             try:
-                # 指定番号の予定削除
+                # 指定された予定を削除
                 data["schedules"][date_str].pop(num - 1)
 
                 # 予定が空なら日付ごと削除
                 if not data["schedules"][date_str]:
                     del data["schedules"][date_str]
 
-                # GitHub 保存要求（キュー化）
-                await queue_save()
+                # 共通保存処理
+                await save_all(data)
 
-                # Discord 表示更新
+                # Discord表示を更新してリアクションを追加
                 success = await refresh_display(bot, data)
-
-                # 成功リアクション
                 await ctx.message.add_reaction('🗑️' if success else '⚠️')
 
             except:
