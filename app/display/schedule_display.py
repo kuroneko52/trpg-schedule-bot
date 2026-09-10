@@ -29,6 +29,8 @@ async def refresh_display(bot, data):
         except:
             continue
 
+    updated = False  # ← save_all 最適化用フラグ
+
     # -----------------------------
     # ID方式：履歴を読まず、message_ids を使う
     # -----------------------------
@@ -51,14 +53,20 @@ async def refresh_display(bot, data):
                 # メッセージが消えていた場合は新規作成
                 new_msg = await channel.send(text)
                 message_ids[period] = new_msg.id
-                await save_all(data)
+                updated = True
         else:
             # 初回作成
             new_msg = await channel.send(text)
             message_ids[period] = new_msg.id
-            await save_all(data)
+            updated = True
 
         await asyncio.sleep(1)
+
+    # -----------------------------
+    # save_all はここで 1 回だけ
+    # -----------------------------
+    if updated:
+        await save_all(data)
 
     return True
 
