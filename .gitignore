@@ -1,0 +1,42 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.envrc
+
+# Logs
+*.log
+
+# Cache
+.cache/
+.ruff_cache/
+
+# SQLite (if used)
+*.sqlite3
+db.sqlite3
+db.sqlite3-journal
+
+# Discord Bot local data
+schedule.json
+config.json
+token.txt
+
+# GitHub API backups
+*.bak
+
+# VS Code
+.vscode/
+
