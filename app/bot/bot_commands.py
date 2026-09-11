@@ -4,11 +4,11 @@ import discord
 import os
 from discord.ext import commands
 
-# データ層
-from data.schedule_store import load_data_from_discord, save_all
+# データ層（ローカル永続化）
+from data.schedule_store import load_data_from_local, request_save
 
 # 表示層
-from display.schedule_display import refresh_display
+from display.schedule_display import refresh_display, schedule_refresh
 
 data_lock = asyncio.Lock()
 
@@ -25,83 +25,66 @@ class MyBot(commands.Bot):
 bot = MyBot(command_prefix='!', intents=intents)
 
 # -----------------------------
-# 日付ヴァリデーション関数
+# 日付ヴァリデーション
 # -----------------------------
 def validate_date(date_str: str):
     try:
         m, d = map(int, date_str.split("/"))
-        if not (1 <= m <= 12 and 1 <= d <= 31):
-            return False
-        return True
+        return 1 <= m <= 12 and 1 <= d <= 31
     except:
         return False
 
 # -----------------------------
-# Bot 起動時処理
+# Bot 起動時
 # -----------------------------
 @bot.event
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
-    data = await load_data_from_discord(bot)
+    data = await load_data_from_local()
     await refresh_display(bot, data)
-    await save_all(bot, data)  # 初期表示も保存
+    await request_save(data)
 
 # -----------------------------
-# 予定追加コマンド
+# 予定追加
 # -----------------------------
 @bot.command()
 async def add(ctx, date_str: str, *, event_info: str):
     async with data_lock:
-        # 日付ヴァリデーション
         if not validate_date(date_str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        # Json読み込み
-        data = await load_data_from_discord(bot)
+        data = await load_data_from_local()
 
-        # 日付がなければJson作成
         if date_str not in data["schedules"]:
             data["schedules"][date_str] = []
 
-        # 予定追加
         data["schedules"][date_str].append(event_info.strip())
 
-        # 共通保存処理
-        await save_all(bot, data)
-
-        # Discord表示を更新してリアクションを追加
+        await request_save(data)
         await schedule_refresh(bot, data)
         await ctx.message.add_reaction('✅')
 
 # -----------------------------
-# 予定削除コマンド
+# 予定削除
 # -----------------------------
 @bot.command(name="del")
 async def del_command(ctx, date_str: str, num: int):
     async with data_lock:
-        # 日付ヴァリデーション
         if not validate_date(date_str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        # Json読み込み
-        data = await load_data_from_discord(bot)
+        data = await load_data_from_local()
 
-        # 削除処理
         if date_str in data["schedules"]:
             try:
-                # 指定された予定を削除
                 data["schedules"][date_str].pop(num - 1)
 
-                # 予定が空なら日付ごと削除
                 if not data["schedules"][date_str]:
                     del data["schedules"][date_str]
 
-                # 共通保存処理
-                await save_all(bot, data)
-
-                # Discord表示を更新してリアクションを追加
+                await request_save(data)
                 await schedule_refresh(bot, data)
                 await ctx.message.add_reaction('🗑️')
 
@@ -111,75 +94,11 @@ async def del_command(ctx, date_str: str, num: int):
             await ctx.send("⚠️ 指定された日付の予定がありません")
 
 # -----------------------------
-# Json初期化コマンド
+# JSON 初期化
 # -----------------------------
 @bot.command()
 async def initjson(ctx):
-    """schedule-json の初期化（保存メッセージを bot が作成）"""
-    channel_id = int(os.environ.get("JSON_STORAGE_CHANNEL_ID"))
-    channel = bot.get_channel(channel_id)
-
-    if not channel:
-        await ctx.send("⚠️ JSON_STORAGE_CHANNEL_ID が不正です")
-        return
-
-    # 新しい保存メッセージを bot が送る
-    new_msg = await channel.send('{"schedules": {}, "message_ids": {}}')
-
-    # 新しいメッセージIDを .env に書き込むのはできないので
-    # data に保存しておいて、save_all で永続化する
-    data = {
-            "schedules": {},
-            "message_ids": {}
-            }
-
-    # 保存メッセージの ID をセット
-    data["storage_message_id"] = new_msg.id
-
-    # JSON_STORAGE_ID を使う構造なので、ここで上書き
-    os.environ["JSON_STORAGE_ID"] = str(new_msg.id)
-
-    # Discord に保存
-    await save_all(bot, data)
-
-    await ctx.send(f"✅ 初期化完了！ 新しい JSON_STORAGE_ID は `{new_msg.id}` だよ")
-
-# -----------------------------
-# refresh_display をキュー方式でまとめて1回にする
-# -----------------------------
-refresh_queue = asyncio.Queue()
-refresh_worker_task = None
-
-async def schedule_refresh(bot, data):
-    # 最新の data をキューに入れる（古いものは無視される）
-    if refresh_queue.empty():
-        await refresh_queue.put((bot, data))
-    else:
-        # すでにキューにあるなら上書き（最新だけ保持）
-        try:
-            refresh_queue.get_nowait()
-        except:
-            pass
-        await refresh_queue.put((bot, data))
-
-    # ワーカーが動いていなければ起動
-    global refresh_worker_task
-    if refresh_worker_task is None or refresh_worker_task.done():
-        refresh_worker_task = asyncio.create_task(refresh_worker())
-
-
-async def refresh_worker():
-    while not refresh_queue.empty():
-        bot, data = await refresh_queue.get()
-
-        # 1秒待って連続呼び出しをまとめる
-        await asyncio.sleep(1)
-
-        # 最新の data だけを使う
-        while not refresh_queue.empty():
-            bot, data = await refresh_queue.get()
-
-        # 実際の描画
-        await refresh_display(bot, data)
-
+    data = {"schedules": {}, "message_ids": {}}
+    await request_save(data)
+    await ctx.send("✅ ローカル schedule.json を初期化したよ")
 
