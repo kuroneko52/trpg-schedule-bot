@@ -4,11 +4,11 @@ import discord
 import os
 from discord.ext import commands
 
-# データ層（ローカル永続化）
-from data.schedule_store import load_data_from_local, request_save
+# ローカル永続化
+from data.schedule_store import load_data_from_local, save_all
 
-# 表示層
-from display.schedule_display import refresh_display, schedule_refresh
+# 表示更新
+from display.schedule_display import refresh_display
 
 data_lock = asyncio.Lock()
 
@@ -40,9 +40,10 @@ def validate_date(date_str: str):
 @bot.event
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
-    data = await load_data_from_local()
+
+    data = load_data_from_local()
     await refresh_display(bot, data)
-    await request_save(data)
+    save_all(data)
 
 # -----------------------------
 # 予定追加
@@ -54,15 +55,13 @@ async def add(ctx, date_str: str, *, event_info: str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        data = await load_data_from_local()
+        data = load_data_from_local()
 
-        if date_str not in data["schedules"]:
-            data["schedules"][date_str] = []
-
+        data["schedules"].setdefault(date_str, [])
         data["schedules"][date_str].append(event_info.strip())
 
-        await request_save(data)
-        await schedule_refresh(bot, data)
+        save_all(data)
+        await refresh_display(bot, data)
         await ctx.message.add_reaction('✅')
 
 # -----------------------------
@@ -75,23 +74,24 @@ async def del_command(ctx, date_str: str, num: int):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        data = await load_data_from_local()
+        data = load_data_from_local()
 
-        if date_str in data["schedules"]:
-            try:
-                data["schedules"][date_str].pop(num - 1)
-
-                if not data["schedules"][date_str]:
-                    del data["schedules"][date_str]
-
-                await request_save(data)
-                await schedule_refresh(bot, data)
-                await ctx.message.add_reaction('🗑️')
-
-            except:
-                await ctx.send("⚠️ 番号が正しくありません")
-        else:
+        if date_str not in data["schedules"]:
             await ctx.send("⚠️ 指定された日付の予定がありません")
+            return
+
+        try:
+            data["schedules"][date_str].pop(num - 1)
+        except:
+            await ctx.send("⚠️ 番号が正しくありません")
+            return
+
+        if not data["schedules"][date_str]:
+            del data["schedules"][date_str]
+
+        save_all(data)
+        await refresh_display(bot, data)
+        await ctx.message.add_reaction('🗑️')
 
 # -----------------------------
 # JSON 初期化
@@ -99,6 +99,6 @@ async def del_command(ctx, date_str: str, num: int):
 @bot.command()
 async def initjson(ctx):
     data = {"schedules": {}, "message_ids": {}}
-    await request_save(data)
+    save_all(data)
     await ctx.send("✅ ローカル schedule.json を初期化したよ")
 
