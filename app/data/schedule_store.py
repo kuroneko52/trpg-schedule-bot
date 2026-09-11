@@ -3,49 +3,32 @@ import json
 import os
 import asyncio
 from datetime import datetime
-import discord
+
+FILE_PATH = os.environ.get("FILE_PATH", "schedule.json")
 
 # ============================================================
-# 環境変数
+# ローカル JSON 読み込み
 # ============================================================
 
-JSON_STORAGE_ID = int(os.environ.get("JSON_STORAGE_ID"))
-JSON_STORAGE_CHANNEL_ID = int(os.environ.get("JSON_STORAGE_CHANNEL_ID"))
-
-# ============================================================
-# Discord メッセージから JSON を読み込む
-# ============================================================
-
-async def load_data_from_discord(bot):
-    """Discord の保存メッセージから JSON を読み込む"""
-    try:
-        channel = bot.get_channel(JSON_STORAGE_CHANNEL_ID)
-        msg = await channel.fetch_message(JSON_STORAGE_ID)
-
-        raw = msg.content.strip()
-
-        # JSON デコード安全化
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            print("[Discord] JSON が壊れているため初期化します")
-            return {"schedules": {}, "message_ids": {}}
-
-        # 安全性のための最低限の補完
-        if "schedules" not in data:
-            data["schedules"] = {}
-        if "message_ids" not in data:
-            data["message_ids"] = {}
-
-        return data
-
-    except Exception as e:
-        print(f"[Discord] JSON 読み込み失敗 → 初期化: {e}")
+async def load_data_from_local():
+    if not os.path.exists(FILE_PATH):
         return {"schedules": {}, "message_ids": {}}
 
+    try:
+        with open(FILE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except:
+        return {"schedules": {}, "message_ids": {}}
+
+    if "schedules" not in data:
+        data["schedules"] = {}
+    if "message_ids" not in data:
+        data["message_ids"] = {}
+
+    return data
 
 # ============================================================
-# 古いデータ削除（昨日以前）
+# 古いデータ削除
 # ============================================================
 
 def cleanup_old_data(data):
@@ -63,29 +46,82 @@ def cleanup_old_data(data):
 
     data["schedules"] = new_schedules
 
-
 # ============================================================
-# Discord メッセージに JSON を保存（上書き）
-# ============================================================
-
-async def save_data_to_discord(bot, data):
-    """Discord の保存メッセージを edit して永続化"""
-    try:
-        channel = bot.get_channel(JSON_STORAGE_CHANNEL_ID)
-        msg = await channel.fetch_message(JSON_STORAGE_ID)
-
-        text = json.dumps(data, ensure_ascii=False, indent=2)
-        await msg.edit(content=text)
-
-    except Exception as e:
-        print(f"[Discord] JSON 保存失敗: {e}")
-
-
-# ============================================================
-# 保存処理の共通化
+# ローカル保存
 # ============================================================
 
-async def save_all(bot, data):
+async def save_data_to_local(data):
+    with open(FILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+from collections import OrderedDict
+from datetime import datetime
+
+# ============================================================
+# 日付ソート
+# ============================================================
+
+def sort_schedules(schedules: dict):
+    def parse_date(key):
+        m, d = key.split("/")
+        return datetime(2026, int(m), int(d))
+
+    sorted_items = sorted(schedules.items(), key=lambda kv: parse_date(kv[0]))
+    return OrderedDict(sorted_items)
+
+
+# ============================================================
+# save_all（本体）
+# ============================================================
+
+async def save_all(data):
+    schedules = data.get("schedules", {})
+    data["schedules"] = sort_schedules(schedules)
+
     cleanup_old_data(data)
-    await save_data_to_discord(bot, data)
+    await save_data_to_local(data)
+
+# ============================================================
+# save_all のキュー化（ここが今回の本丸）
+# ============================================================
+
+save_queue = asyncio.Queue()
+save_worker_task = None
+
+async def request_save(data):
+    """
+    save_all をキュー化して、最新だけ1回保存する
+    """
+
+    # キューが空なら入れる
+    if save_queue.empty():
+        await save_queue.put(data)
+    else:
+        # 古いデータを捨てて最新だけ入れる
+        try:
+            save_queue.get_nowait()
+        except:
+            pass
+        await save_queue.put(data)
+
+    # ワーカー起動
+    global save_worker_task
+    if save_worker_task is None or save_worker_task.done():
+        save_worker_task = asyncio.create_task(save_worker())
+
+
+async def save_worker():
+    """
+    0.5秒待って最新の data を1回だけ保存する
+    """
+    while not save_queue.empty():
+        data = await save_queue.get()
+
+        await asyncio.sleep(0.5)
+
+        # 最新だけ残す
+        while not save_queue.empty():
+            data = await save_queue.get()
+
+        await save_all(data)
 
