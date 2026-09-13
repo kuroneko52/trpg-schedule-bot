@@ -14,6 +14,10 @@ app = Flask(__name__)
 def home():
     return "Bot is Online!"
 
+@app.route("/healthz")
+def health():
+    return "OK"
+
 # -----------------------------
 # Flask 起動関数
 # -----------------------------
