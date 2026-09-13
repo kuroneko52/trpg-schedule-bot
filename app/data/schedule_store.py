@@ -1,22 +1,30 @@
 # app/data/schedule_store.py
-import json
 import os
+import json
+import redis
 from datetime import datetime
 from collections import OrderedDict
 
-FILE_PATH = os.environ.get("FILE_PATH", "schedule.json")
-
 # ============================================================
-# ローカル JSON 読み込み
+# Redis 接続
 # ============================================================
 
-def load_data_from_local():
-    if not os.path.exists(FILE_PATH):
+REDIS_URL = os.environ.get("REDIS_URL")
+r = redis.from_url(REDIS_URL, decode_responses=True)
+
+REDIS_KEY = "bot_schedule_data"  # 1キーに全部まとめて保存する
+
+# ============================================================
+# Redis 読み込み
+# ============================================================
+
+def load_data_from_redis():
+    raw = r.get(REDIS_KEY)
+    if not raw:
         return {"schedules": {}, "message_ids": {}}
 
     try:
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(raw)
     except:
         return {"schedules": {}, "message_ids": {}}
 
@@ -61,12 +69,11 @@ def sort_schedules(schedules: dict):
     return OrderedDict(sorted_items)
 
 # ============================================================
-# ローカル保存
+# Redis 保存
 # ============================================================
 
-def save_data_to_local(data):
-    with open(FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def save_data_to_redis(data):
+    r.set(REDIS_KEY, json.dumps(data, ensure_ascii=False))
 
 # ============================================================
 # save_all（ソート → 古いデータ削除 → 保存）
@@ -80,5 +87,5 @@ def save_all(data):
     cleanup_old_data(data)
 
     # 保存
-    save_data_to_local(data)
+    save_data_to_redis(data)
 
