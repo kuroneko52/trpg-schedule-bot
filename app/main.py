@@ -1,10 +1,12 @@
 # app/main.py
-from config.loadenv import load_env
-
 # -----------------------------
 # .env 読み込み（最優先）
 # -----------------------------
-load_env()
+try:
+    from config.loadenv import load_env
+    load_env()
+except ModuleNotFoundError:
+    pass
 
 from threading import Thread
 from server.server import run_flask
