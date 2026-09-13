@@ -4,8 +4,8 @@ import discord
 import os
 from discord.ext import commands
 
-# ローカル永続化
-from data.schedule_store import load_data_from_local, save_all
+# Redis 永続化
+from data.schedule_store import load_data_from_redis, save_all
 
 # 表示更新
 from display.schedule_display import refresh_display
@@ -41,7 +41,7 @@ def validate_date(date_str: str):
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
 
-    data = load_data_from_local()
+    data = load_data_from_redis()
     await refresh_display(bot, data)
     save_all(data)
 
@@ -55,7 +55,7 @@ async def add(ctx, date_str: str, *, event_info: str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        data = load_data_from_local()
+        data = load_data_from_redis()
 
         data["schedules"].setdefault(date_str, [])
         data["schedules"][date_str].append(event_info.strip())
@@ -74,7 +74,7 @@ async def del_command(ctx, date_str: str, num: int):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
             return
 
-        data = load_data_from_local()
+        data = load_data_from_redis()
 
         if date_str not in data["schedules"]:
             await ctx.send("⚠️ 指定された日付の予定がありません")
@@ -94,11 +94,11 @@ async def del_command(ctx, date_str: str, num: int):
         await ctx.message.add_reaction('🗑️')
 
 # -----------------------------
-# JSON 初期化
+# Redis 初期化
 # -----------------------------
 @bot.command()
 async def initjson(ctx):
     data = {"schedules": {}, "message_ids": {}}
     save_all(data)
-    await ctx.send("✅ ローカル schedule.json を初期化したよ")
+    await ctx.send("✅ Redis のデータを初期化したよ")
 
