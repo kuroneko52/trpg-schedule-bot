@@ -224,3 +224,12 @@ sort → cleanup → save
 - 月跨ぎの予定も自動で正規化される
 
 - 内部データは常に YYYY/MM/DD で安定
+
+## 📜 License
+
+This project is licensed under the **MIT License**.
+
+Copyright (c) 2026 kuroneko52
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
