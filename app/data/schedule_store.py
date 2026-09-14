@@ -69,10 +69,18 @@ def normalize_schedules(schedules: dict):
     normalized = {}
 
     for key, events in schedules.items():
-        # 日付形式でないキーは無視
-        normalized_key = normalize_date_key(key)
-        if not normalized_key:
-            continue
+        parts = key.split("/")
+
+        # MM/DD → YYYY/MM/DD に正規化
+        if len(parts) == 2:
+            normalized_key = normalize_date_key(key)
+            if not normalized_key:
+                continue
+        # すでに YYYY/MM/DD ならそのまま使う
+        elif len(parts) == 3:
+            normalized_key = key
+        else:
+            continue  # 変なキーは無視
 
         normalized.setdefault(normalized_key, []).extend(events)
 
