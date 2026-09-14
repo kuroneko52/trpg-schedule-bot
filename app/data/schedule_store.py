@@ -16,7 +16,7 @@ REDIS_KEY = "bot_schedule_data"
 
 
 # ============================================================
-# MM/DD → YYYY/MM/DD 正規化（ねこ仕様）
+# MM/DD → YYYY/MM/DD 正規化
 # ============================================================
 
 def normalize_date_key(key: str):
@@ -24,7 +24,7 @@ def normalize_date_key(key: str):
     today = datetime.now()
     year = today.year
 
-    # 今日より前の月は来年扱い（ねこ仕様）
+    # 今日より前の月は来年扱い
     if m < today.month:
         year += 1
 
@@ -52,14 +52,26 @@ def load_data_from_redis():
 
 
 # ============================================================
+# 正規化（MM/DD → YYYY/MM/DD）
+# ============================================================
+
+def normalize_schedules(schedules: dict):
+    normalized = {}
+    for key, events in schedules.items():
+        normalized_key = normalize_date_key(key)
+        normalized.setdefault(normalized_key, []).extend(events)
+    return normalized
+
+
+# ============================================================
 # 古いデータ削除（今日より前は削除）
 # ============================================================
 
-def cleanup_old_data(data):
+def cleanup_schedules(schedules: dict):
     today = datetime.now().date()
     new_schedules = {}
 
-    for date_key, events in data["schedules"].items():
+    for date_key, events in schedules.items():
         try:
             y, m, d = map(int, date_key.split("/"))
             dt = datetime(y, m, d).date()
@@ -68,7 +80,7 @@ def cleanup_old_data(data):
         except:
             continue
 
-    data["schedules"] = new_schedules
+    return new_schedules
 
 
 # ============================================================
@@ -93,23 +105,24 @@ def save_data_to_redis(data):
 
 
 # ============================================================
-# save_all（正規化 → ソート → 古いデータ削除 → 保存）
+# save_all（パイプライン化）
 # ============================================================
 
+PIPELINE = [
+    ("normalize", normalize_schedules),
+    ("sort",      sort_schedules),
+    ("cleanup",   cleanup_schedules),
+]
+
 def save_all(data):
-    # 正規化（MM/DD → YYYY/MM/DD）
-    normalized = {}
-    for key, events in data["schedules"].items():
-        normalized_key = normalize_date_key(key)
-        normalized.setdefault(normalized_key, []).extend(events)
+    schedules = data["schedules"]
 
-    data["schedules"] = normalized
+    # パイプライン実行
+    for name, func in PIPELINE:
+        schedules = func(schedules)
+        # print(f"[save_all] after {name}: {list(schedules.keys())}")
 
-    # ソート
-    data["schedules"] = sort_schedules(data["schedules"])
-
-    # 古いデータ削除
-    cleanup_old_data(data)
+    data["schedules"] = schedules
 
     # 保存
     save_data_to_redis(data)
