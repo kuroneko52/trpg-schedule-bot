@@ -5,7 +5,7 @@ from datetime import datetime
 from collections import OrderedDict
 
 # ============================================================
-# Redis 接続
+# Redis 接続設定
 # ============================================================
 
 REDIS_URL = os.environ.get("REDIS_URL")
@@ -19,7 +19,11 @@ REDIS_KEY = "bot_schedule_data"
 # ============================================================
 
 def normalize_date_key(key: str):
-    # key が "MM/DD" 形式でない場合は無視
+    """
+    MM/DD を YYYY/MM/DD に正規化する。
+    - 月が現在より前なら翌年扱い
+    - YYYY/MM/DD が来た場合は呼び出し側でそのまま使う
+    """
     if "/" not in key:
         return None
 
@@ -31,7 +35,7 @@ def normalize_date_key(key: str):
     today = datetime.now()
     year = today.year
 
-    # 今日より前の月は来年扱い
+    # 今日より前の月は翌年扱い
     if m < today.month:
         year += 1
 
@@ -39,10 +43,14 @@ def normalize_date_key(key: str):
 
 
 # ============================================================
-# Redis 読み込み
+# Redis 読み込み（壊れていてもクラッシュしない）
 # ============================================================
 
 def load_data_from_redis():
+    """
+    Redis から schedules / message_ids を読み込む。
+    壊れた JSON や欠損があっても dict を返す防御入り。
+    """
     raw = r.get(REDIS_KEY)
     if not raw:
         return {"schedules": {}, "message_ids": {}}
@@ -54,15 +62,18 @@ def load_data_from_redis():
 
     data.setdefault("schedules", {})
     data.setdefault("message_ids", {})
-
     return data
 
 
 # ============================================================
-# 古いデータ削除（今日より前は削除）
+# 過去日付の削除（cleanup）
 # ============================================================
 
 def cleanup_schedules(schedules: dict):
+    """
+    今日より前の日付を削除する。
+    壊れたキーは無視して安全に進める。
+    """
     if not isinstance(schedules, dict):
         return {}
 
@@ -70,7 +81,6 @@ def cleanup_schedules(schedules: dict):
     new_schedules = {}
 
     for date_key, events in schedules.items():
-        # 日付形式でないキーは無視
         if "/" not in date_key:
             continue
 
@@ -86,15 +96,18 @@ def cleanup_schedules(schedules: dict):
 
 
 # ============================================================
-# 日付ソート（YYYY/MM/DD を datetime でソート）
+# 日付ソート（YYYY/MM/DD）
 # ============================================================
 
 def sort_schedules(schedules: dict):
+    """
+    YYYY/MM/DD を datetime に変換してソートする。
+    壊れたキーは最後尾へ送る。
+    """
     if not isinstance(schedules, dict):
         return OrderedDict()
 
     def parse_date(key):
-        # 壊れたキーは最大値扱い（最後尾へ）
         try:
             y, m, d = map(int, key.split("/"))
             return datetime(y, m, d)
@@ -110,22 +123,31 @@ def sort_schedules(schedules: dict):
 # ============================================================
 
 def save_data_to_redis(data):
+    """
+    dict を JSON 化して Redis に保存する。
+    """
     r.set(REDIS_KEY, json.dumps(data, ensure_ascii=False))
 
 
 # ============================================================
-# save_all（パイプライン化）
+# save_all（PIPELINE による整形処理）
 # ============================================================
 
 PIPELINE = [
-    ("sort",      sort_schedules),
-    ("cleanup",   cleanup_schedules),
+    ("sort",    sort_schedules),
+    ("cleanup", cleanup_schedules),
 ]
 
 def save_all(data):
+    """
+    schedules を整形して保存する統合処理。
+    - add/del 側で正規化済みの YYYY/MM/DD を受け取る
+    - PIPELINE（sort → cleanup）で整形
+    - Redis に保存
+    """
     schedules = data.get("schedules", {})
 
-    # パイプライン実行
+    # パイプライン実行（処理順序を明示）
     for name, func in PIPELINE:
         schedules = func(schedules)
 

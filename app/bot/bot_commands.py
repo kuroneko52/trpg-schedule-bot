@@ -4,7 +4,10 @@ import os
 import json
 from discord.ext import commands
 
-# Redis 永続化
+# ============================================================
+# データ層（Redis 永続化）
+# ============================================================
+
 from data.schedule_store import (
     load_data_from_redis,
     save_all,
@@ -12,27 +15,41 @@ from data.schedule_store import (
     save_data_to_redis
 )
 
-# 表示更新
+# ============================================================
+# 表示層（Discord メッセージ更新）
+# ============================================================
+
 from display.schedule_display import refresh_display
 
 data_lock = asyncio.Lock()
 
-# -----------------------------
+# ============================================================
 # Discord Bot 初期化
-# -----------------------------
+# ============================================================
+
 intents = discord.Intents.default()
 intents.message_content = True
 
 class MyBot(commands.Bot):
+    """
+    Discord Bot の初期化クラス。
+    setup_hook は起動時に一度だけ呼ばれる。
+    """
     async def setup_hook(self):
         print("Bot setup completed.")
 
 bot = MyBot(command_prefix='!', intents=intents)
 
-# -----------------------------
-# 日付ヴァリデーション
-# -----------------------------
+
+# ============================================================
+# 日付バリデーション（MM/DD）
+# ============================================================
+
 def validate_date(date_str: str):
+    """
+    MM/DD の形式かどうかを判定する。
+    月・日が数値として妥当でなければ False を返す。
+    """
     if "/" not in date_str:
         return False
     try:
@@ -41,18 +58,23 @@ def validate_date(date_str: str):
     except:
         return False
 
-# -----------------------------
-# Bot 起動時
-# -----------------------------
+
+# ============================================================
+# Bot 起動時（壊れたデータは操作拒否）
+# ============================================================
+
 @bot.event
 async def on_ready():
+    """
+    Bot 起動時に Redis のデータを読み込み、
+    schedules / message_ids が壊れていれば操作を拒否する。
+    正常なら save_all → refresh_display を実行する。
+    """
     print(f"Bot Ready: {bot.user}")
 
     data = load_data_from_redis()
-
     broken = False
 
-    # schedules/message_ids が壊れていたら「操作を拒否するだけ」
     if not isinstance(data.get("schedules"), dict):
         print("⚠ schedules が壊れています。")
         broken = True
@@ -67,11 +89,17 @@ async def on_ready():
     save_all(data)
     await refresh_display(bot, data)
 
-# -----------------------------
-# 予定追加
-# -----------------------------
+
+# ============================================================
+# 予定追加コマンド
+# ============================================================
+
 @bot.command(name="add")
 async def add_command(ctx, date_str: str, *, event_info: str):
+    """
+    MM/DD の予定を追加する。
+    正規化後は YYYY/MM/DD で保存される。
+    """
     async with data_lock:
         if not validate_date(date_str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
@@ -80,7 +108,7 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         data = load_data_from_redis()
 
         if not isinstance(data.get("schedules"), dict):
-            await ctx.send("⚠️ データ形式が壊れています。initjson を実行してください。")
+            await ctx.send("⚠️ データ形式が壊れています。")
             return
 
         normalized_key = normalize_date_key(date_str)
@@ -95,11 +123,17 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         await refresh_display(bot, data)
         await ctx.message.add_reaction('✅')
 
-# -----------------------------
-# 予定削除
-# -----------------------------
+
+# ============================================================
+# 予定削除コマンド
+# ============================================================
+
 @bot.command(name="del")
 async def delete_command(ctx, date_str: str, num: int):
+    """
+    指定した MM/DD の予定を削除する。
+    番号が不正・日付が存在しない場合は警告を返す。
+    """
     async with data_lock:
         if not validate_date(date_str):
             await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
@@ -108,7 +142,7 @@ async def delete_command(ctx, date_str: str, num: int):
         data = load_data_from_redis()
 
         if not isinstance(data.get("schedules"), dict):
-            await ctx.send("⚠️ データ形式が壊れています。initjson を実行してください。")
+            await ctx.send("⚠️ データ形式が壊れています。")
             return
 
         normalized_key = normalize_date_key(date_str)
@@ -133,19 +167,30 @@ async def delete_command(ctx, date_str: str, num: int):
         await refresh_display(bot, data)
         await ctx.message.add_reaction('🗑️')
 
-# -----------------------------
-# Redis Dump
-# -----------------------------
+
+# ============================================================
+# Redis Dump（デバッグ用）
+# ============================================================
+
 @bot.command(name="dump")
 async def dump(ctx):
+    """
+    Redis の schedules / message_ids をそのまま表示する。
+    デバッグ用コマンド。
+    """
     data = load_data_from_redis()
     await ctx.send(f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```")
 
-# -----------------------------
+
+# ============================================================
 # Redis 初期化
-# -----------------------------
+# ============================================================
+
 @bot.command(name="initjson")
 async def initjson(ctx):
+    """
+    schedules / message_ids を完全初期化する。
+    """
     data = {"schedules": {}, "message_ids": {}}
     save_data_to_redis(data)
     await ctx.send("✅ Redis のデータを初期化したよ")
