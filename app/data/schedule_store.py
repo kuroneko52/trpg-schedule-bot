@@ -1,4 +1,3 @@
-# app/data/schedule_store.py
 import os
 import json
 import redis
@@ -20,7 +19,15 @@ REDIS_KEY = "bot_schedule_data"
 # ============================================================
 
 def normalize_date_key(key: str):
-    m, d = map(int, key.split("/"))
+    # key が "MM/DD" 形式でない場合は無視
+    if "/" not in key:
+        return None
+
+    try:
+        m, d = map(int, key.split("/"))
+    except:
+        return None
+
     today = datetime.now()
     year = today.year
 
@@ -56,10 +63,19 @@ def load_data_from_redis():
 # ============================================================
 
 def normalize_schedules(schedules: dict):
+    if not isinstance(schedules, dict):
+        return {}
+
     normalized = {}
+
     for key, events in schedules.items():
+        # 日付形式でないキーは無視
         normalized_key = normalize_date_key(key)
+        if not normalized_key:
+            continue
+
         normalized.setdefault(normalized_key, []).extend(events)
+
     return normalized
 
 
@@ -68,10 +84,17 @@ def normalize_schedules(schedules: dict):
 # ============================================================
 
 def cleanup_schedules(schedules: dict):
+    if not isinstance(schedules, dict):
+        return {}
+
     today = datetime.now().date()
     new_schedules = {}
 
     for date_key, events in schedules.items():
+        # 日付形式でないキーは無視
+        if "/" not in date_key:
+            continue
+
         try:
             y, m, d = map(int, date_key.split("/"))
             dt = datetime(y, m, d).date()
@@ -88,9 +111,16 @@ def cleanup_schedules(schedules: dict):
 # ============================================================
 
 def sort_schedules(schedules: dict):
+    if not isinstance(schedules, dict):
+        return OrderedDict()
+
     def parse_date(key):
-        y, m, d = map(int, key.split("/"))
-        return datetime(y, m, d)
+        # 壊れたキーは最大値扱い（最後尾へ）
+        try:
+            y, m, d = map(int, key.split("/"))
+            return datetime(y, m, d)
+        except:
+            return datetime.max
 
     sorted_items = sorted(schedules.items(), key=lambda kv: parse_date(kv[0]))
     return OrderedDict(sorted_items)
@@ -115,12 +145,11 @@ PIPELINE = [
 ]
 
 def save_all(data):
-    schedules = data["schedules"]
+    schedules = data.get("schedules", {})
 
     # パイプライン実行
     for name, func in PIPELINE:
         schedules = func(schedules)
-        # print(f"[save_all] after {name}: {list(schedules.keys())}")
 
     data["schedules"] = schedules
 
