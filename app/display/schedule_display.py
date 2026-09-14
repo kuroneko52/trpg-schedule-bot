@@ -4,11 +4,10 @@ import discord
 from datetime import datetime
 
 # ============================================================
-# period 分類
+# 1. period 分類
 # ============================================================
 
 def classify_period(date_key: str):
-    # YYYY/MM/DD → MM/DD に変換して月と日だけ使う
     _, m, d = date_key.split('/')
     m = int(m)
     d = int(d)
@@ -22,31 +21,42 @@ def sort_period_key(period: str):
 
 
 # ============================================================
-# メッセージ本文生成
+# 2. period → date_key のグループ化
+# ============================================================
+
+def group_by_period(schedules: dict):
+    groups = {}
+    for date_key in schedules:
+        try:
+            period = classify_period(date_key)
+            groups.setdefault(period, []).append(date_key)
+        except:
+            continue
+    return groups
+
+
+# ============================================================
+# 3. メッセージ本文生成（join 化）
 # ============================================================
 
 def build_message(period: str, groups: dict, schedules: dict):
-    text = f"**{period}の予定一覧**\n"
+    lines = [f"**{period}の予定一覧**"]
 
-    # groups[period] は YYYY/MM/DD のリスト
-    # 日付ソートは「日だけ」で OK（同月内なので）
     for full_date in sorted(groups[period], key=lambda x: int(x.split('/')[2])):
-        # 表示は MM/DD に戻す
         _, m, d = full_date.split('/')
-        text += f"**【{m}/{d}】**\n"
+        lines.append(f"**【{m}/{d}】**")
 
         for i, e in enumerate(schedules[full_date], 1):
-            text += f" {i}. {e}\n"
+            lines.append(f" {i}. {e}")
 
-    return text
+    return "\n".join(lines)
 
 
 # ============================================================
-# Discord メッセージ取得
+# 4. Discord メッセージ取得
 # ============================================================
 
 async def fetch_existing_messages(channel, message_ids: dict):
-    # 逆引きマップ（message_id → period）
     id_to_period = {mid: period for period, mid in message_ids.items()}
 
     messages = []
@@ -63,33 +73,10 @@ async def fetch_existing_messages(channel, message_ids: dict):
 
 
 # ============================================================
-# 表示更新（DELETE → SEND）
+# 5. 不要 period の削除
 # ============================================================
 
-from data.schedule_store import save_all
-
-async def refresh_display(bot, data):
-    channel_id = int(os.environ.get("CHANNEL_ID"))
-    channel = bot.get_channel(channel_id)
-    if not channel:
-        return False
-
-    schedules = data["schedules"]      # YYYY/MM/DD → [events]
-    message_ids = data["message_ids"]  # {period: message_id}
-
-    # period 分類
-    groups = {}
-    for date_key in schedules:
-        try:
-            period = classify_period(date_key)
-            groups.setdefault(period, []).append(date_key)
-        except:
-            continue
-
-    # 既存メッセージ取得
-    existing = await fetch_existing_messages(channel, message_ids)
-
-    # 不要 period の削除
+async def delete_unused_periods(existing: dict, message_ids: dict, groups: dict):
     for period in list(message_ids):
         if period not in groups:
             msg = existing.get(period)
@@ -100,11 +87,14 @@ async def refresh_display(bot, data):
                     pass
             del message_ids[period]
 
-    # period ソート
-    periods_sorted = sorted(groups.keys(), key=sort_period_key)
 
-    # 全 period を DELETE → SEND
+# ============================================================
+# 6. period メッセージ再構築（DELETE → SEND）
+# ============================================================
+
+async def rebuild_period_messages(channel, periods_sorted, groups, schedules, existing):
     new_message_ids = {}
+
     for period in periods_sorted:
         old_msg = existing.get(period)
         if old_msg:
@@ -117,8 +107,44 @@ async def refresh_display(bot, data):
         new_msg = await channel.send(text)
         new_message_ids[period] = new_msg.id
 
+    return new_message_ids
+
+
+# ============================================================
+# 7. 表示更新（本体）
+# ============================================================
+
+from data.schedule_store import save_all
+
+async def refresh_display(bot, data):
+    channel_id = int(os.environ.get("CHANNEL_ID"))
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        return False
+
+    schedules = data["schedules"]
+    message_ids = data["message_ids"]
+
+    # 1. period 分類
+    groups = group_by_period(schedules)
+
+    # 2. 既存メッセージ取得
+    existing = await fetch_existing_messages(channel, message_ids)
+
+    # 3. 不要 period の削除
+    await delete_unused_periods(existing, message_ids, groups)
+
+    # 4. period ソート
+    periods_sorted = sorted(groups.keys(), key=sort_period_key)
+
+    # 5. メッセージ再構築
+    new_message_ids = await rebuild_period_messages(
+        channel, periods_sorted, groups, schedules, existing
+    )
+
     data["message_ids"] = new_message_ids
 
+    # 6. 保存
     save_all(data)
     return True
 
