@@ -76,6 +76,8 @@ def build_message(period: str, groups: dict, schedules: dict):
             continue
 
         _, m, d = parts
+        m = int(m)
+        d = int(d)
         lines.append(f"**【{m}/{d}】**")
 
         for i, e in enumerate(schedules.get(full_date, []), 1):
