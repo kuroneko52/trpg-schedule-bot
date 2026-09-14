@@ -50,14 +50,19 @@ async def on_ready():
 
     data = load_data_from_redis()
 
+    broken = False
+
     # schedules/message_ids が壊れていたら「操作を拒否するだけ」
     if not isinstance(data.get("schedules"), dict):
-        print("⚠ schedules が壊れています。initjson を実行してください。")
-        data["schedules"] = {}  # ← ここは空にするだけ（初期化ではない）
+        print("⚠ schedules が壊れています。")
+        broken = True
 
     if not isinstance(data.get("message_ids"), dict):
-        print("⚠ message_ids が壊れています。initjson を実行してください。")
-        data["message_ids"] = {}
+        print("⚠ message_ids が壊れています。")
+        broken = True
+
+    if broken:
+        return
 
     save_all(data)
     await refresh_display(bot, data)
