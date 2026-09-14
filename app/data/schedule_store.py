@@ -147,7 +147,6 @@ def save_data_to_redis(data):
 # ============================================================
 
 PIPELINE = [
-    ("normalize", normalize_schedules),
     ("sort",      sort_schedules),
     ("cleanup",   cleanup_schedules),
 ]
