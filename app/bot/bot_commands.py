@@ -52,7 +52,7 @@ async def on_ready():
 # -----------------------------
 # 予定追加
 # -----------------------------
-@bot.command()
+@bot.command(name="add")
 async def add_command(ctx, date_str: str, *, event_info: str):
     async with data_lock:
         if not validate_date(date_str):
