@@ -59,35 +59,6 @@ def load_data_from_redis():
 
 
 # ============================================================
-# 正規化（MM/DD → YYYY/MM/DD）
-# ============================================================
-
-def normalize_schedules(schedules: dict):
-    if not isinstance(schedules, dict):
-        return {}
-
-    normalized = {}
-
-    for key, events in schedules.items():
-        parts = key.split("/")
-
-        # MM/DD → YYYY/MM/DD に正規化
-        if len(parts) == 2:
-            normalized_key = normalize_date_key(key)
-            if not normalized_key:
-                continue
-        # すでに YYYY/MM/DD ならそのまま使う
-        elif len(parts) == 3:
-            normalized_key = key
-        else:
-            continue  # 変なキーは無視
-
-        normalized.setdefault(normalized_key, []).extend(events)
-
-    return normalized
-
-
-# ============================================================
 # 古いデータ削除（今日より前は削除）
 # ============================================================
 
@@ -147,7 +118,6 @@ def save_data_to_redis(data):
 # ============================================================
 
 PIPELINE = [
-    ("normalize", normalize_schedules),
     ("sort",      sort_schedules),
     ("cleanup",   cleanup_schedules),
 ]
