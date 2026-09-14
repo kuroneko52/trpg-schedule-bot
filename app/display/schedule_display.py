@@ -7,32 +7,30 @@ from datetime import datetime
 # ============================================================
 
 def classify_period(date_key: str):
-    # 壊れたキーは None を返す
     parts = date_key.split('/')
     if len(parts) != 3:
         return None
 
     try:
-        _, m, d = parts
-        m = int(m)
-        d = int(d)
+        y, m, d = map(int, parts)
     except:
         return None
 
-    return f"{m}月{'前半' if d <= 15 else '後半'}"
+    half = "前半" if d <= 15 else "後半"
+    return f"{y}年{m}月{half}"
 
 
 def sort_period_key(period: str):
-    # period が None の場合は後ろに飛ばす
-    if not isinstance(period, str):
-        return (999, 1)
-
     try:
-        m = int(period.replace("月前半", "").replace("月後半", ""))
+        # "2026年10月前半" を分解
+        year_part, rest = period.split("年", 1)
+        month_part = rest.replace("月前半", "").replace("月後半", "")
+        y = int(year_part)
+        m = int(month_part)
         half = 0 if "前半" in period else 1
-        return (m, half)
+        return (y, m, half)
     except:
-        return (999, 1)
+        return (9999, 12, 1)  # 壊れた period は最後尾
 
 
 # ============================================================
