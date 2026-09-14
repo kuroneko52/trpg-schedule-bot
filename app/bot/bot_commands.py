@@ -1,14 +1,15 @@
-# app/bot/bot_commands.py
 import asyncio
 import discord
 import os
+import json
 from discord.ext import commands
 
 # Redis 永続化
 from data.schedule_store import (
     load_data_from_redis,
     save_all,
-    normalize_date_key
+    normalize_date_key,
+    save_data_to_redis
 )
 
 # 表示更新
@@ -32,6 +33,8 @@ bot = MyBot(command_prefix='!', intents=intents)
 # 日付ヴァリデーション
 # -----------------------------
 def validate_date(date_str: str):
+    if "/" not in date_str:
+        return False
     try:
         m, d = map(int, date_str.split("/"))
         return 1 <= m <= 12 and 1 <= d <= 31
@@ -39,15 +42,25 @@ def validate_date(date_str: str):
         return False
 
 # -----------------------------
-# Bot 起動時（順序修正済み）
+# Bot 起動時
 # -----------------------------
 @bot.event
 async def on_ready():
     print(f"Bot Ready: {bot.user}")
 
     data = load_data_from_redis()
-    save_all(data)  # ★ 正規化 → ソート → cleanup
-    await refresh_display(bot, data)  # ★ 表示更新
+
+    # schedules/message_ids が壊れていたら「操作を拒否するだけ」
+    if not isinstance(data.get("schedules"), dict):
+        print("⚠ schedules が壊れています。initjson を実行してください。")
+        data["schedules"] = {}  # ← ここは空にするだけ（初期化ではない）
+
+    if not isinstance(data.get("message_ids"), dict):
+        print("⚠ message_ids が壊れています。initjson を実行してください。")
+        data["message_ids"] = {}
+
+    save_all(data)
+    await refresh_display(bot, data)
 
 # -----------------------------
 # 予定追加
@@ -61,7 +74,14 @@ async def add_command(ctx, date_str: str, *, event_info: str):
 
         data = load_data_from_redis()
 
+        if not isinstance(data.get("schedules"), dict):
+            await ctx.send("⚠️ データ形式が壊れています。initjson を実行してください。")
+            return
+
         normalized_key = normalize_date_key(date_str)
+        if not normalized_key:
+            await ctx.send("⚠️ 日付形式が不正です")
+            return
 
         data["schedules"].setdefault(normalized_key, [])
         data["schedules"][normalized_key].append(event_info.strip())
@@ -82,7 +102,14 @@ async def delete_command(ctx, date_str: str, num: int):
 
         data = load_data_from_redis()
 
+        if not isinstance(data.get("schedules"), dict):
+            await ctx.send("⚠️ データ形式が壊れています。initjson を実行してください。")
+            return
+
         normalized_key = normalize_date_key(date_str)
+        if not normalized_key:
+            await ctx.send("⚠️ 日付形式が不正です")
+            return
 
         if normalized_key not in data["schedules"]:
             await ctx.send("⚠️ 指定された日付の予定がありません")
@@ -102,11 +129,19 @@ async def delete_command(ctx, date_str: str, num: int):
         await ctx.message.add_reaction('🗑️')
 
 # -----------------------------
+# Redis Dump
+# -----------------------------
+@bot.command(name="dump")
+async def dump(ctx):
+    data = load_data_from_redis()
+    await ctx.send(f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```")
+
+# -----------------------------
 # Redis 初期化
 # -----------------------------
-@bot.command()
+@bot.command(name="initjson")
 async def initjson(ctx):
     data = {"schedules": {}, "message_ids": {}}
-    save_all(data)
+    save_data_to_redis(data)
     await ctx.send("✅ Redis のデータを初期化したよ")
 
