@@ -1,15 +1,20 @@
 import os
 import json
-import redis
+from upstash_redis import Redis
 from datetime import datetime
 from collections import OrderedDict
 
 # ============================================================
-# Redis 接続設定
+# Upstash Redis 接続設定
 # ============================================================
 
-REDIS_URL = os.environ.get("REDIS_URL")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+UPSTASH_REDIS_URL = os.environ.get("UPSTASH_REDIS_URL")
+UPSTASH_REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_TOKEN")
+
+r = Redis(
+    url=UPSTASH_REDIS_URL,
+    token=UPSTASH_REDIS_TOKEN
+)
 
 REDIS_KEY = "bot_schedule_data"
 
