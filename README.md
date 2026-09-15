@@ -57,8 +57,9 @@ app/
 | 変数名 | 内容 |
 |--------|-------|
 | `DISCORD_TOKEN` | Discord Bot のトークン |
-| `REDIS_URL` | Redis 接続 URL |
 | `CHANNEL_ID` | 投稿先の Discord チャンネル ID |
+| `UPSTASH_REDIS_URL` | Redis 接続 URL |
+| `UPSTASH_REDIS_TOKEN` | Redis 接続 トークン |
 
 ---
 
