@@ -42,24 +42,6 @@ bot = MyBot(command_prefix='!', intents=intents)
 
 
 # ============================================================
-# 日付バリデーション（MM/DD）
-# ============================================================
-
-def validate_date(date_str: str):
-    """
-    MM/DD の形式かどうかを判定する。
-    月・日が数値として妥当でなければ False を返す。
-    """
-    if "/" not in date_str:
-        return False
-    try:
-        m, d = map(int, date_str.split("/"))
-        return 1 <= m <= 12 and 1 <= d <= 31
-    except:
-        return False
-
-
-# ============================================================
 # Bot 起動時（壊れたデータは操作拒否）
 # ============================================================
 
@@ -102,30 +84,18 @@ async def add_command(ctx, date_str: str, *, event_info: str):
     同月過去日付の防止
     """
     async with data_lock:
-        if not validate_date(date_str):
-            await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
-            return
-
         data = load_data_from_redis()
-
-        if not isinstance(data.get("schedules"), dict):
-            await ctx.send("⚠️ データ形式が壊れています。")
-            return
 
         normalized_key = normalize_date_key(date_str)
         if not normalized_key:
             await ctx.send("⚠️ 日付形式が不正です")
             return
 
-        try:
-            y, m, d = map(int, normalized_key.split("/"))
-            dt = datetime(y, m, d).date()
-        except:
-            await ctx.send("⚠️ 日付形式が不正です")
-            return
+        _, m, d = map(int, normalized_key.split("/"))
 
-        if dt < datetime.now().date():
-            await ctx.send("⚠️ 同月過去日付の予定は追加できません")
+        today = datetime.now().date()
+        if m == today.month and d < today.day:
+            await ctx.send("⚠️ 同月内過去日付の予定は追加できません")
             return
 
         data["schedules"].setdefault(normalized_key, [])
@@ -147,37 +117,24 @@ async def delete_command(ctx, date_str: str, num: int):
     番号が不正・日付が存在しない場合は警告を返す。
     """
     async with data_lock:
-        if not validate_date(date_str):
-            await ctx.send("⚠️ 日付は 9/10 の形式で入力してください")
-            return
-
         data = load_data_from_redis()
-
-        if not isinstance(data.get("schedules"), dict):
-            await ctx.send("⚠️ データ形式が壊れています。")
-            return
 
         normalized_key = normalize_date_key(date_str)
         if not normalized_key:
             await ctx.send("⚠️ 日付形式が不正です")
             return
 
-        try:
-            y, m, d = map(int, normalized_key.split("/"))
-            dt = datetime(y, m, d).date()
-        except:
-            await ctx.send("  日付形式が不正です")
-            return
-
         if normalized_key not in data["schedules"]:
             await ctx.send("⚠️ 指定された日付の予定がありません")
             return
 
-        try:
-            data["schedules"][normalized_key].pop(num - 1)
-        except:
-            await ctx.send("⚠️ 番号が正しくありません")
+        events = data["schedules"][normalized_key]
+
+        if not (1 <= num <= len(events)):
+            await ctx.send("  指定された日付の予定がありません")
             return
+
+        events.pop(num - 1)
 
         if not data["schedules"][normalized_key]:
             del data["schedules"][normalized_key]
