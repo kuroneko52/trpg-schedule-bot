@@ -1,6 +1,5 @@
 import os
 import discord
-from datetime import datetime
 
 # ============================================================
 # 1. period 分類（internal period 生成）
@@ -9,7 +8,7 @@ from datetime import datetime
 def classify_period(date_key: str):
     """
     YYYY/MM/DD を internal period（例：2026年10月前半）に変換する。
-    壊れたキーは None を返す。
+    不正な形式の場合は None を返す。
     """
     parts = date_key.split('/')
     if len(parts) != 3:
@@ -17,7 +16,7 @@ def classify_period(date_key: str):
 
     try:
         y, m, d = map(int, parts)
-    except:
+    except ValueError:
         return None
 
     half = "前半" if d <= 15 else "後半"
@@ -26,8 +25,8 @@ def classify_period(date_key: str):
 
 def sort_period_key(period: str):
     """
-    internal period を (年, 月, 前半/後半) のタプルに変換してソートする。
-    壊れた period は最後尾へ送る。
+    internal period を (年, 月, 前半/後半) のタプルに変換してソート順を決める。
+    不正な period は最後尾に送る。
     """
     try:
         year_part, rest = period.split("年", 1)
@@ -36,7 +35,7 @@ def sort_period_key(period: str):
         m = int(month_part)
         half = 0 if "前半" in period else 1
         return (y, m, half)
-    except:
+    except Exception:
         return (9999, 12, 1)
 
 
@@ -46,8 +45,8 @@ def sort_period_key(period: str):
 
 def group_by_period(schedules: dict):
     """
-    schedules を internal period ごとにまとめる。
-    壊れた日付キーは無視する。
+    schedules（YYYY/MM/DD → [予定]）を internal period ごとにまとめる。
+    不正な日付キーは無視する。
     """
     groups = {}
     for date_key in schedules:
@@ -64,36 +63,24 @@ def group_by_period(schedules: dict):
 
 def build_message(period: str, groups: dict, schedules: dict):
     """
-    internal period を使って Discord に送る本文を生成する。
-    日付は safe_day_sort で昇順に並べる。
+    1つの period に対応する Discord メッセージ本文を生成する。
+    日付順は data 層で既に YYYY/MM/DD 昇順に整形済み。
     """
     lines = [f"**{period}の予定一覧**"]
 
-    for full_date in sorted(groups[period], key=lambda x: safe_day_sort(x)):
+    # groups[period] は data 層でソート済みの挿入順を保持している
+    for full_date in groups[period]:
         parts = full_date.split('/')
         if len(parts) != 3:
             continue
 
         _, m, d = parts
-        m = int(m)
-        d = int(d)
-        lines.append(f"**【{m}/{d}】**")
+        lines.append(f"**【{int(m)}/{int(d)}】**")
 
         for i, e in enumerate(schedules.get(full_date, []), 1):
             lines.append(f" {i}. {e}")
 
     return "\n".join(lines)
-
-
-def safe_day_sort(date_key: str):
-    """
-    YYYY/MM/DD の日付部分だけでソートする。
-    壊れたキーは最後尾へ送る。
-    """
-    try:
-        return int(date_key.split('/')[2])
-    except:
-        return 999
 
 
 # ============================================================
@@ -126,8 +113,8 @@ async def fetch_existing_messages(channel, message_ids: dict):
 
 async def rebuild_period_messages(channel, periods_sorted, groups, schedules, existing):
     """
-    period ごとにメッセージを再構築する。
-    既存メッセージは DELETE → SEND で順序を維持する。
+    period ごとに Discord メッセージを再構築する。
+    表示順を維持するため、既存メッセージは DELETE → SEND で置き換える。
     """
     new_message_ids = {}
 
@@ -137,7 +124,7 @@ async def rebuild_period_messages(channel, periods_sorted, groups, schedules, ex
             try:
                 await old_msg.delete()
             except discord.NotFound:
-                pass
+                pass  # 既に削除されている場合
 
         text = build_message(period, groups, schedules)
         new_msg = await channel.send(text)
@@ -150,16 +137,18 @@ async def rebuild_period_messages(channel, periods_sorted, groups, schedules, ex
 # 7. 表示更新（orchestrator）
 # ============================================================
 
-from data.schedule_store import save_all
+from data.schedule_store import save_data_to_redis
 
 async def refresh_display(bot, data):
     """
     表示更新の統合処理。
-    - period 分類
-    - 既存メッセージ取得
-    - period ソート
-    - メッセージ再構築
-    - Redis 保存
+
+    処理内容:
+        1. period 分類
+        2. 既存メッセージの逆引き
+        3. period のソート
+        4. メッセージ再構築
+        5. message_ids の保存
     """
     channel_id = int(os.environ.get("CHANNEL_ID"))
     channel = bot.get_channel(channel_id)
@@ -179,6 +168,7 @@ async def refresh_display(bot, data):
     )
 
     data["message_ids"] = new_message_ids
-    save_all(data)
+    save_data_to_redis(data)
+
     return True
 
