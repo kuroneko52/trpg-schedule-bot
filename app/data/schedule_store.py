@@ -46,28 +46,35 @@ def load_data_from_redis():
 # 過去日付の削除（cleanup）
 # ============================================================
 
+from display.schedule_display import classify_period, sort_period_key
+
 def cleanup_schedules(schedules: dict):
     """
-    今日より前の日付を削除する。
-    壊れたキーは無視して安全に進める。
+    period ベースで cleanup する。
+    今日が属する period より前の period を削除し、
+    今日の period と未来の period を残す。
     """
     if not isinstance(schedules, dict):
         return {}
 
     today = datetime.now().date()
+    today_key = f"{today.year}/{today.month:02d}/{today.day:02d}"
+    today_period = classify_period(today_key)
+    today_period_sort = sort_period_key(today_period)
+
     new_schedules = {}
 
     for date_key, events in schedules.items():
         if "/" not in date_key:
             continue
 
-        try:
-            y, m, d = map(int, date_key.split("/"))
-            dt = datetime(y, m, d).date()
-            if dt >= today:
-                new_schedules[date_key] = events
-        except:
+        period = classify_period(date_key)
+        if not period:
             continue
+
+        # period のソートキーを比較
+        if sort_period_key(period) >= today_period_sort:
+            new_schedules[date_key] = events
 
     return new_schedules
 
