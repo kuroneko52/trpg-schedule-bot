@@ -3,6 +3,8 @@ import discord
 import os
 import json
 from discord.ext import commands
+from datetime import datetime
+
 
 # ============================================================
 # データ層（Redis 永続化）
@@ -131,7 +133,7 @@ async def delete_command(ctx, date_str: str, num: int):
         events = data["schedules"][normalized_key]
 
         if not (1 <= num <= len(events)):
-            await ctx.send("  指定された日付の予定がありません")
+            await ctx.send("  番号が正しくありません")
             return
 
         events.pop(num - 1)
