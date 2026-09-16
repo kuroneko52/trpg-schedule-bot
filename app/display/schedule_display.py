@@ -137,8 +137,6 @@ async def rebuild_period_messages(channel, periods_sorted, groups, schedules, ex
 # 7. 表示更新（orchestrator）
 # ============================================================
 
-from data.schedule_store import save_data_to_redis
-
 async def refresh_display(bot, data):
     """
     表示更新の統合処理。
@@ -167,8 +165,4 @@ async def refresh_display(bot, data):
         channel, periods_sorted, groups, schedules, existing
     )
 
-    data["message_ids"] = new_message_ids
-    save_data_to_redis(data)
-
-    return True
-
+    return new_message_ids
