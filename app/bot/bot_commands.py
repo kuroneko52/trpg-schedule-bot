@@ -99,6 +99,7 @@ async def add_command(ctx, date_str: str, *, event_info: str):
     """
     MM/DD の予定を追加する。
     正規化後は YYYY/MM/DD で保存される。
+    同月過去日付の防止
     """
     async with data_lock:
         if not validate_date(date_str):
@@ -114,6 +115,17 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         normalized_key = normalize_date_key(date_str)
         if not normalized_key:
             await ctx.send("⚠️ 日付形式が不正です")
+            return
+
+        try:
+            y, m, d = map(int, normalized_key.split("/"))
+            dt = datetime(y, m, d).date()
+        except:
+            await ctx.send("⚠️ 日付形式が不正です")
+            return
+
+        if dt < datetime.now().date():
+            await ctx.send("⚠️ 同月過去日付の予定は追加できません")
             return
 
         data["schedules"].setdefault(normalized_key, [])
