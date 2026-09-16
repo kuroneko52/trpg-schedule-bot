@@ -70,7 +70,9 @@ async def on_ready():
         return
 
     save_all(data)
-    await refresh_display(bot, data)
+    new_ids = await refresh_display(bot, data)
+    data["message_ids"] = new_ids
+    save_data_to_redis(data)
 
 
 # ============================================================
@@ -103,7 +105,8 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         data["schedules"][normalized_key].append(event_info.strip())
 
         save_all(data)
-        await refresh_display(bot, data)
+        new_ids = await refresh_display(bot, data)
+        data["message_ids"] = new_ids
         await ctx.message.add_reaction('✅')
 
 
