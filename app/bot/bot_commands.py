@@ -162,6 +162,13 @@ async def delete_command(ctx, date_str: str, num: int):
             await ctx.send("⚠️ 日付形式が不正です")
             return
 
+        try:
+            y, m, d = map(int, normalized_key.split("/"))
+            dt = datetime(y, m, d).date()
+        except:
+            await ctx.send("  日付形式が不正です")
+            return
+
         if normalized_key not in data["schedules"]:
             await ctx.send("⚠️ 指定された日付の予定がありません")
             return
