@@ -26,14 +26,20 @@ REDIS_KEY = "bot_schedule_data"
 def normalize_date_key(key: str):
     """
     MM/DD を YYYY/MM/DD に正規化する。
+    - MM/DD形式でなければ None
+    - 存在しない月日は None
     - 月が現在より前なら翌年扱い
-    - YYYY/MM/DD が来た場合は呼び出し側でそのまま使う
     """
     if "/" not in key:
         return None
 
     try:
         m, d = map(int, key.split("/"))
+    except:
+        return None
+
+    try:
+        datetime(datetime.now().year, m, d)
     except:
         return None
 
