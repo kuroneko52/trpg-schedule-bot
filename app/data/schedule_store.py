@@ -1,7 +1,7 @@
 import os
 import json
-from upstash_redis import Redis
 from datetime import datetime
+from upstash_redis import Redis
 from collections import OrderedDict
 
 # ============================================================
@@ -17,40 +17,6 @@ r = Redis(
 )
 
 REDIS_KEY = "bot_schedule_data"
-
-
-# ============================================================
-# MM/DD → YYYY/MM/DD 正規化
-# ============================================================
-
-def normalize_date_key(key: str):
-    """
-    MM/DD を YYYY/MM/DD に正規化する。
-    - MM/DD形式でなければ None
-    - 存在しない月日は None
-    - 月が現在より前なら翌年扱い
-    """
-    if "/" not in key:
-        return None
-
-    try:
-        m, d = map(int, key.split("/"))
-    except:
-        return None
-
-    try:
-        datetime(datetime.now().year, m, d)
-    except:
-        return None
-
-    today = datetime.now()
-    year = today.year
-
-    # 今日より前の月は翌年扱い
-    if m < today.month:
-        year += 1
-
-    return f"{year}/{m:02d}/{d:02d}"
 
 
 # ============================================================
@@ -145,21 +111,21 @@ def save_data_to_redis(data):
 # ============================================================
 
 PIPELINE = [
-    ("sort",    sort_schedules),
     ("cleanup", cleanup_schedules),
+    ("sort",    sort_schedules),
 ]
 
 def save_all(data):
     """
     schedules を整形して保存する統合処理。
     - add/del 側で正規化済みの YYYY/MM/DD を受け取る
-    - PIPELINE（sort → cleanup）で整形
+    - PIPELINE（cleanup → sort）で整形
     - Redis に保存
     """
     schedules = data.get("schedules", {})
 
     # パイプライン実行（処理順序を明示）
-    for name, func in PIPELINE:
+    for _, func in PIPELINE:
         schedules = func(schedules)
 
     data["schedules"] = schedules

@@ -2,8 +2,8 @@ import asyncio
 import discord
 import os
 import json
-from discord.ext import commands
 from datetime import datetime
+from discord.ext import commands
 
 
 # ============================================================
@@ -13,7 +13,6 @@ from datetime import datetime
 from data.schedule_store import (
     load_data_from_redis,
     save_all,
-    normalize_date_key,
     save_data_to_redis
 )
 
@@ -106,6 +105,40 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         save_all(data)
         await refresh_display(bot, data)
         await ctx.message.add_reaction('✅')
+
+
+# ============================================================
+# MM/DD → YYYY/MM/DD 正規化
+# ============================================================
+
+def normalize_date_key(key: str):
+    """
+    MM/DD を YYYY/MM/DD に正規化する。
+    - MM/DD形式でなければ None
+    - 存在しない月日は None
+    - 月が現在より前なら翌年扱い
+    """
+    if "/" not in key:
+        return None
+
+    try:
+        m, d = map(int, key.split("/"))
+    except:
+        return None
+
+    try:
+        datetime(datetime.now().year, m, d)
+    except:
+        return None
+
+    today = datetime.now()
+    year = today.year
+
+    # 今日より前の月は翌年扱い
+    if m < today.month:
+        year += 1
+
+    return f"{year}/{m:02d}/{d:02d}"
 
 
 # ============================================================
