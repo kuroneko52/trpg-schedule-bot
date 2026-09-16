@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from upstash_redis import Redis
 from collections import OrderedDict
+from display.schedule_display import classify_period, sort_period_key
 
 # ============================================================
 # Upstash Redis 接続設定
@@ -45,8 +46,6 @@ def load_data_from_redis():
 # ============================================================
 # 過去日付の削除（cleanup）
 # ============================================================
-
-from display.schedule_display import classify_period, sort_period_key
 
 def cleanup_schedules(schedules: dict):
     """
