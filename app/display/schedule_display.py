@@ -8,8 +8,7 @@ from datetime import datetime
 
 def classify_period(date_key: str):
     """
-    YYYY/MM/DD → internal period（例：2026年10月前半）に変換する。
-    ソートや message_ids のキーとして使用する。
+    YYYY/MM/DD を internal period（例：2026年10月前半）に変換する。
     壊れたキーは None を返す。
     """
     parts = date_key.split('/')
@@ -66,7 +65,7 @@ def group_by_period(schedules: dict):
 def build_message(period: str, groups: dict, schedules: dict):
     """
     internal period を使って Discord に送る本文を生成する。
-    日付は safe_day_sort で日付順に並べる。
+    日付は safe_day_sort で昇順に並べる。
     """
     lines = [f"**{period}の予定一覧**"]
 
@@ -122,33 +121,13 @@ async def fetch_existing_messages(channel, message_ids: dict):
 
 
 # ============================================================
-# 5. 不要 period の削除
-# ============================================================
-
-async def delete_unused_periods(existing: dict, message_ids: dict, groups: dict):
-    """
-    groups に存在しない period のメッセージを削除する。
-    message_ids からも削除する。
-    """
-    for period in list(message_ids):
-        if period not in groups:
-            msg = existing.get(period)
-            if msg:
-                try:
-                    await msg.delete()
-                except discord.NotFound:
-                    pass
-            del message_ids[period]
-
-
-# ============================================================
 # 6. period メッセージ再構築（DELETE → SEND）
 # ============================================================
 
 async def rebuild_period_messages(channel, periods_sorted, groups, schedules, existing):
     """
     period ごとにメッセージを再構築する。
-    順序のため、既存メッセージは必ず DELETE → SEND する。
+    既存メッセージは DELETE → SEND で順序を維持する。
     """
     new_message_ids = {}
 
@@ -178,7 +157,6 @@ async def refresh_display(bot, data):
     表示更新の統合処理。
     - period 分類
     - 既存メッセージ取得
-    - 不要 period 削除
     - period ソート
     - メッセージ再構築
     - Redis 保存
@@ -193,7 +171,6 @@ async def refresh_display(bot, data):
 
     groups = group_by_period(schedules)
     existing = await fetch_existing_messages(channel, message_ids)
-    await delete_unused_periods(existing, message_ids, groups)
 
     periods_sorted = sorted(groups.keys(), key=sort_period_key)
 
