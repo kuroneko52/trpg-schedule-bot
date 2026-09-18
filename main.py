@@ -1,16 +1,16 @@
-# app/main.py
+# main.py
 # -----------------------------
 # .env 読み込み（最優先）
 # -----------------------------
 try:
-    from config.loadenv import load_env
+    from app.config.loadenv import load_env
     load_env()
 except ModuleNotFoundError:
     pass
 
+from app.server.server import run_flask
+from app.bot.bot_commands import bot
 from threading import Thread
-from server.server import run_flask
-from bot.bot_commands import bot
 import os
 
 # -----------------------------
