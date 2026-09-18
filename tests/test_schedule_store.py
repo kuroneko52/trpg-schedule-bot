@@ -1,14 +1,14 @@
 # tests/test_schedule_store.py
 
 """
-data.schedule_store のユニットテスト。
+app.data.schedule_store のユニットテスト。
 - cleanup_schedules(): period の削除ロジックの本体
 - sort_schedules(): YYYY/MM/DD の昇順ソート
 """
 
 from datetime import datetime
 from unittest.mock import patch
-from data.schedule_store import cleanup_schedules, sort_schedules
+from app.data.schedule_store import cleanup_schedules, sort_schedules
 
 
 def test_cleanup_front_half_today():
@@ -20,14 +20,13 @@ def test_cleanup_front_half_today():
     """
     fake_today = datetime(2026, 9, 10)
 
-    # datetime.now() をモックして今日を固定
-    with patch("data.schedule_store.datetime") as mock_dt:
+    with patch("app.data.schedule_store.datetime") as mock_dt:
         mock_dt.now.return_value = fake_today
         mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
         schedules = {
-            "2026/09/10": ["A"],  # 前半
-            "2026/09/20": ["B"],  # 後半
+            "2026/09/10": ["A"],
+            "2026/09/20": ["B"],
         }
 
         cleaned = cleanup_schedules(schedules)
@@ -44,13 +43,13 @@ def test_cleanup_back_half_today():
     """
     fake_today = datetime(2026, 9, 18)
 
-    with patch("data.schedule_store.datetime") as mock_dt:
+    with patch("app.data.schedule_store.datetime") as mock_dt:
         mock_dt.now.return_value = fake_today
         mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
         schedules = {
-            "2026/09/10": ["A"],  # 前半
-            "2026/09/20": ["B"],  # 後半
+            "2026/09/10": ["A"],
+            "2026/09/20": ["B"],
         }
 
         cleaned = cleanup_schedules(schedules)
