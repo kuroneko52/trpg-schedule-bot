@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from upstash_redis import Redis
 from collections import OrderedDict
-from display.schedule_display import classify_period, sort_period_key
+from app.display.schedule_display import classify_period, sort_period_key
 
 # ============================================================
 # Upstash Redis 接続設定
