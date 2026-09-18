@@ -10,7 +10,7 @@ from discord.ext import commands
 # データ層（Redis 永続化）
 # ============================================================
 
-from data.schedule_store import (
+from app.data.schedule_store import (
     load_data_from_redis,
     save_all,
     save_data_to_redis
@@ -20,7 +20,7 @@ from data.schedule_store import (
 # 表示層（Discord メッセージ更新）
 # ============================================================
 
-from display.schedule_display import refresh_display
+from app.display.schedule_display import refresh_display
 
 data_lock = asyncio.Lock()
 
