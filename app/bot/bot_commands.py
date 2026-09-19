@@ -76,6 +76,40 @@ async def on_ready():
 
 
 # ============================================================
+# MM/DD → YYYY/MM/DD 正規化
+# ============================================================
+
+def normalize_date_key(key: str):
+    """
+    MM/DD を YYYY/MM/DD に正規化する。
+    - MM/DD形式でなければ None
+    - 存在しない月日は None
+    - 月が現在より前なら翌年扱い
+    """
+    if "/" not in key:
+        return None
+
+    try:
+        m, d = map(int, key.split("/"))
+    except:
+        return None
+
+    try:
+        datetime(datetime.now().year, m, d)
+    except:
+        return None
+
+    today = datetime.now()
+    year = today.year
+
+    # 今日より前の月は翌年扱い
+    if m < today.month:
+        year += 1
+
+    return f"{year}/{m:02d}/{d:02d}"
+
+
+# ============================================================
 # 予定追加コマンド
 # ============================================================
 
@@ -108,40 +142,6 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         new_ids = await refresh_display(bot, data)
         data["message_ids"] = new_ids
         await ctx.message.add_reaction('✅')
-
-
-# ============================================================
-# MM/DD → YYYY/MM/DD 正規化
-# ============================================================
-
-def normalize_date_key(key: str):
-    """
-    MM/DD を YYYY/MM/DD に正規化する。
-    - MM/DD形式でなければ None
-    - 存在しない月日は None
-    - 月が現在より前なら翌年扱い
-    """
-    if "/" not in key:
-        return None
-
-    try:
-        m, d = map(int, key.split("/"))
-    except:
-        return None
-
-    try:
-        datetime(datetime.now().year, m, d)
-    except:
-        return None
-
-    today = datetime.now()
-    year = today.year
-
-    # 今日より前の月は翌年扱い
-    if m < today.month:
-        year += 1
-
-    return f"{year}/{m:02d}/{d:02d}"
 
 
 # ============================================================
