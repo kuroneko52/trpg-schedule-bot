@@ -21,9 +21,15 @@
 ## 🧱 ディレクトリ構造
 
 ```
-app/
-├── main.py              # Bot のエントリポイント
+main.py              # Bot のエントリポイント
 │
+pytest.ini           # python test setting
+│
+.github/
+├── workflows/
+│   └── pytest.yml   # CI setting file
+│
+app/
 ├── bot/                 # Discord コマンド層
 │   └── bot_commands.py
 │
