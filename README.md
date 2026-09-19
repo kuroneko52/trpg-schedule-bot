@@ -73,7 +73,7 @@ app/
 
 ```bash
 pip install -r requirements.txt
-python app/main.py
+python main.py
 ```
 
 ## 🗂 コマンド一覧
