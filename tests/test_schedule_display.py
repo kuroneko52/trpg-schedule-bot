@@ -17,7 +17,7 @@ from app.display.schedule_display import (
     classify_period,
     sort_period_key,
     group_by_period,
-    build_message
+    build_message,
     delete_obsolete_period_messages,
 )
 
