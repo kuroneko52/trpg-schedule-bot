@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from app.data.schedule_store import (
     load_data_from_redis,
-    save_all,
+    cleanup_sort_schedules,
     save_data_to_redis
 )
 
@@ -51,7 +51,7 @@ async def on_ready():
     """
     Bot 起動時に Redis のデータを読み込み、
     schedules / message_ids が壊れていれば操作を拒否する。
-    正常なら save_all → refresh_display を実行する。
+    正常なら cleanup_sort_schedules → refresh_display → save_data_to_redis を実行する。
     """
     print(f"Bot Ready: {bot.user}")
 
@@ -69,45 +69,12 @@ async def on_ready():
     if broken:
         return
 
-    save_all(data)
+    data = cleanup_sort_schedules(data)
+
     new_ids = await refresh_display(bot, data)
     data["message_ids"] = new_ids
+
     save_data_to_redis(data)
-
-
-# ============================================================
-# 予定追加コマンド
-# ============================================================
-
-@bot.command(name="add")
-async def add_command(ctx, date_str: str, *, event_info: str):
-    """
-    MM/DD の予定を追加する。
-    正規化後は YYYY/MM/DD で保存される。
-    同月過去日付の防止
-    """
-    async with data_lock:
-        data = load_data_from_redis()
-
-        normalized_key = normalize_date_key(date_str)
-        if not normalized_key:
-            await ctx.send("⚠️ 日付形式が不正です")
-            return
-
-        _, m, d = map(int, normalized_key.split("/"))
-
-        today = datetime.now().date()
-        if m == today.month and d < today.day:
-            await ctx.send("⚠️ 同月内過去日付の予定は追加できません")
-            return
-
-        data["schedules"].setdefault(normalized_key, [])
-        data["schedules"][normalized_key].append(event_info.strip())
-
-        save_all(data)
-        new_ids = await refresh_display(bot, data)
-        data["message_ids"] = new_ids
-        await ctx.message.add_reaction('✅')
 
 
 # ============================================================
@@ -145,6 +112,45 @@ def normalize_date_key(key: str):
 
 
 # ============================================================
+# 予定追加コマンド
+# ============================================================
+
+@bot.command(name="add")
+async def add_command(ctx, date_str: str, *, event_info: str):
+    """
+    MM/DD の予定を追加する。
+    正規化後は YYYY/MM/DD で保存される。
+    同月過去日付の防止
+    """
+    async with data_lock:
+        data = load_data_from_redis()
+
+        normalized_key = normalize_date_key(date_str)
+        if not normalized_key:
+            await ctx.send("⚠️ 日付形式が不正です")
+            return
+
+        _, m, d = map(int, normalized_key.split("/"))
+
+        today = datetime.now().date()
+        if m == today.month and d < today.day:
+            await ctx.send("⚠️ 同月内過去日付の予定は追加できません")
+            return
+
+        data["schedules"].setdefault(normalized_key, [])
+        data["schedules"][normalized_key].append(event_info.strip())
+
+        data = cleanup_sort_schedules(data)
+
+        new_ids = await refresh_display(bot, data)
+        data["message_ids"] = new_ids
+
+        save_data_to_redis(data)
+
+        await ctx.message.add_reaction('✅')
+
+
+# ============================================================
 # 予定削除コマンド
 # ============================================================
 
@@ -177,8 +183,13 @@ async def delete_command(ctx, date_str: str, num: int):
         if not data["schedules"][normalized_key]:
             del data["schedules"][normalized_key]
 
-        save_all(data)
-        await refresh_display(bot, data)
+        data = cleanup_sort_schedules(data)
+
+        new_ids = await refresh_display(bot, data)
+        data["message_ids"] = new_ids
+
+        save_data_to_redis(data)
+
         await ctx.message.add_reaction('🗑️')
 
 
