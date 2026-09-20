@@ -92,7 +92,9 @@ async def fetch_existing_messages(channel, message_ids: dict):
     message_ids（period → message_id）を逆引きし、
     チャンネル内の既存メッセージを period と紐付けて返す。
     """
-    id_to_period = {mid: period for period, mid in message_ids.items()}
+    id_to_period = {
+        mid: period for period, mid in message_ids.items()
+    }
 
     messages = []
     async for m in channel.history(limit=50):
@@ -105,6 +107,24 @@ async def fetch_existing_messages(channel, message_ids: dict):
             existing[period] = m
 
     return existing
+
+
+# ============================================================
+# 5. 不要なメッセージの削除
+# ============================================================
+async def delete_obsolete_period_messages(existing, groups):
+    """
+    schedules に存在しない period の Discord メッセージを削除する。
+    """
+
+    for period, old_msg in existing.items():
+        if period not in groups:
+            try:
+                await old_msg.delete()
+
+            except discord.NotFound:
+                pass
+
 
 
 # ============================================================
@@ -158,6 +178,8 @@ async def refresh_display(bot, data):
 
     groups = group_by_period(schedules)
     existing = await fetch_existing_messages(channel, message_ids)
+
+    await delete_obsolete_period_messages(existing, groups)
 
     periods_sorted = sorted(groups.keys(), key=sort_period_key)
 
