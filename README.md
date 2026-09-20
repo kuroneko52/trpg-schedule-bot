@@ -169,16 +169,14 @@ function wakeUpRender() {
 
 内部データは常に安定したフォーマット
 
-🔹 整形パイプライン（save_all）
+🔹 整形パイプライン（cleanup_sort_schedules）
 ```
-sort → cleanup → save
+sort → cleanup
 ```
 
 - 日付ソート
 
 - 過去日の削除
-
-- Redis 保存
 
 - 責務分離された安全な整形処理
 
