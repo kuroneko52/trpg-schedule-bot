@@ -72,6 +72,11 @@ async def on_ready():
     data = cleanup_sort_schedules(data)
 
     new_ids = await refresh_display(bot, data)
+
+    if new_ids is False:
+        print("⚠️ CHANNEL_ID が不正です")
+        return
+
     data["message_ids"] = new_ids
 
     save_data_to_redis(data)
@@ -143,6 +148,11 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         data = cleanup_sort_schedules(data)
 
         new_ids = await refresh_display(bot, data)
+
+        if new_ids is False:
+            await ctx.send("⚠️ CHANNEL_ID が不正です")
+            return
+
         data["message_ids"] = new_ids
 
         save_data_to_redis(data)
@@ -186,6 +196,11 @@ async def delete_command(ctx, date_str: str, num: int):
         data = cleanup_sort_schedules(data)
 
         new_ids = await refresh_display(bot, data)
+
+        if new_ids is False:
+            await ctx.send("⚠️ CHANNEL_ID が不正です")
+            return
+
         data["message_ids"] = new_ids
 
         save_data_to_redis(data)

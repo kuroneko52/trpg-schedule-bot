@@ -107,13 +107,38 @@ def sort_schedules(schedules: dict):
 
 def save_data_to_redis(data):
     """
-    dict を JSON 化して Redis に保存する。
+    dict を検証して JSON 化し、 Redis に保存する。
     """
-    r.set(REDIS_KEY, json.dumps(data, ensure_ascii=False))
+
+    if not isinstance(data, dict):
+        print("⚠️ Redis保存中止: data が dict ではありません")
+        return False
+
+    if not isinstance(data.get("schedules"), dict):
+        print("⚠️ Redis保存中止: schedules が dict ではありません")
+        return False
+
+    if not isinstance(data.get("message_ids"), dict):
+        print("⚠️ Redis保存中止: message_ids が dict ではありません")
+        return False
+
+    try:
+        payload = json.dumps(data, ensure_ascii=False)
+    except (TypeError, ValueError) as e:
+        print(f"⚠️ Redis保存中止: JSON 化に失敗しました: {e}")
+        return False
+
+    try:
+        r.set(REDIS_KEY, payload)
+    except Exception as e:
+        print(f"⚠️ Redis保存失敗: {e}")
+        return False
+
+    return True
 
 
 # ============================================================
-# save_all（PIPELINE による整形処理）
+# cleanup_sort_schedules（PIPELINE による整形処理）
 # ============================================================
 
 PIPELINE = [
