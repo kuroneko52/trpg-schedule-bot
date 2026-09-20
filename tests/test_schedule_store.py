@@ -8,7 +8,7 @@ app.data.schedule_store のユニットテスト。
 
 from datetime import datetime
 from unittest.mock import patch
-from app.data.schedule_store import cleanup_schedules, sort_schedules
+from app.data.schedule_store import cleanup_schedules, sort_schedules, cleanup_sort_schedules
 
 
 def test_cleanup_front_half_today():
@@ -67,4 +67,36 @@ def test_sort_schedules():
     }
     sorted_s = sort_schedules(schedules)
     assert list(sorted_s.keys()) == ["2026/09/10", "2026/09/20"]
+
+
+def test_cleanup_sort_schedules():
+    fake_today = datetime(2026, 9, 18)
+
+    with patch("app.data.schedule_store.datetime") as mock_dt:
+        mock_dt.now.return_value = fake_today
+        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+        data = {
+            "schedules": {
+                "2026/10/01": ["B"],
+                "2026/09/20": ["A"],
+            },
+            "message_ids": {},
+        }
+
+        cleanup_sort_schedules(data)
+
+        assert list(data["schedules"].keys()) == [
+            "2026/09/20",
+            "2026/10/01",
+        ]
+
+
+
+
+
+
+
+
+
 

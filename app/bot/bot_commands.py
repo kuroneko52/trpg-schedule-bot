@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from app.data.schedule_store import (
     load_data_from_redis,
-    save_all,
+    cleanup_sort_schedules,
     save_data_to_redis
 )
 
@@ -51,7 +51,7 @@ async def on_ready():
     """
     Bot 起動時に Redis のデータを読み込み、
     schedules / message_ids が壊れていれば操作を拒否する。
-    正常なら save_all → refresh_display を実行する。
+    正常なら cleanup_sort_schedules → refresh_display → save_data_to_redis を実行する。
     """
     print(f"Bot Ready: {bot.user}")
 
@@ -69,9 +69,11 @@ async def on_ready():
     if broken:
         return
 
-    save_all(data)
+    data = cleanup_sort_schedules(data)
+
     new_ids = await refresh_display(bot, data)
     data["message_ids"] = new_ids
+
     save_data_to_redis(data)
 
 
@@ -138,9 +140,13 @@ async def add_command(ctx, date_str: str, *, event_info: str):
         data["schedules"].setdefault(normalized_key, [])
         data["schedules"][normalized_key].append(event_info.strip())
 
-        save_all(data)
+        data = cleanup_sort_schedules(data)
+
         new_ids = await refresh_display(bot, data)
         data["message_ids"] = new_ids
+
+        save_data_to_redis(data)
+
         await ctx.message.add_reaction('✅')
 
 
@@ -177,8 +183,13 @@ async def delete_command(ctx, date_str: str, num: int):
         if not data["schedules"][normalized_key]:
             del data["schedules"][normalized_key]
 
-        save_all(data)
-        await refresh_display(bot, data)
+        data = cleanup_sort_schedules(data)
+
+        new_ids = await refresh_display(bot, data)
+        data["message_ids"] = new_ids
+
+        save_data_to_redis(data)
+
         await ctx.message.add_reaction('🗑️')
 
 

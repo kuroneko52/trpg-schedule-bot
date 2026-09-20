@@ -121,12 +121,11 @@ PIPELINE = [
     ("sort",    sort_schedules),
 ]
 
-def save_all(data):
+def cleanup_sort_schedules(data):
     """
-    schedules を整形して保存する統合処理。
+    data["schedules"] をcleanup・sort する。
     - add/del 側で正規化済みの YYYY/MM/DD を受け取る
     - PIPELINE（cleanup → sort）で整形
-    - Redis に保存
     """
     schedules = data.get("schedules", {})
 
@@ -136,6 +135,5 @@ def save_all(data):
 
     data["schedules"] = schedules
 
-    # 保存
-    save_data_to_redis(data)
+    return data
 
