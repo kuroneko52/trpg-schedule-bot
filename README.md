@@ -43,7 +43,9 @@ app/
 │   └── schedule_display.py
 │
 └── server/              # Flask ヘルスチェックサーバー
-    └── server.py
+│   └── server.py
+│
+└── tests/              # pytest code
 ```
 
 ---
