@@ -8,11 +8,17 @@ app.display.schedule_display のユニットテスト。
 - build_message(): Discord 表示文生成
 """
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
+import discord
+
 from app.display.schedule_display import (
     classify_period,
     sort_period_key,
     group_by_period,
-    build_message
+    build_message,
+    delete_obsolete_period_messages,
 )
 
 
@@ -46,4 +52,50 @@ def test_build_message():
     assert "【9/10】" in msg
     assert "1. A" in msg
     assert "2. B" in msg
+
+
+def test_delete_obsolete_period_messages():
+    current_message = MagicMock()
+    current_message.delete = AsyncMock()
+
+    obsolete_message = MagicMock()
+    obsolete_message.delete = AsyncMock()
+
+    existing = {
+        "2026年9月前半": current_message,
+        "2026年8月後半": obsolete_message,
+    }
+
+    groups = {
+        "2026年9月前半": ["2026/09/10"],
+    }
+
+    asyncio.run(
+        delete_obsolete_period_messages(existing, groups)
+    )
+
+    current_message.delete.assert_not_awaited()
+    obsolete_message.delete.assert_awaited_once_with()
+
+
+def test_delete_obsolete_period_messages_ignores_not_found():
+    message = MagicMock()
+    message.delete = AsyncMock(
+        side_effect=discord.NotFound(
+            response=MagicMock(),
+            message="message not found",
+        )
+    )
+
+    existing = {
+        "2026年8月後半": message,
+    }
+
+    groups = {}
+
+    asyncio.run(
+        delete_obsolete_period_messages(existing, groups)
+    )
+
+    message.delete.assert_awaited_once_with()
 
